@@ -38,7 +38,9 @@ class Command(BaseCommand):
             "alert_events_created": 0,
             "alert_events_sent": 0,
             "digest_sent": False,
+            "signal_count": 0,
             "skipped": False,
+            "skip_reason": "",
         }
 
         if region == "domestic":
@@ -60,6 +62,13 @@ class Command(BaseCommand):
                 summary["alert_events_sent"] = alert_result["sent_events"]
 
             signals = detect_signals(rule, sources=["naver"])
+            summary["signal_count"] = len(signals)
+            if not signals:
+                summary["skipped"] = True
+                summary["skip_reason"] = "no_signals"
+                self.stdout.write(self.style.WARNING(json.dumps(summary, ensure_ascii=False)))
+                return
+
             message = build_digest_message(
                 region_label="국내",
                 region_emoji="🇰🇷",
@@ -74,12 +83,14 @@ class Command(BaseCommand):
             mode = options["respect_us_dst"]
             if not matches_us_dst_mode(mode):
                 summary["skipped"] = True
+                summary["skip_reason"] = "dst_mode_mismatch"
                 self.stdout.write(self.style.WARNING(json.dumps(summary, ensure_ascii=False)))
                 return
 
             collector = FMPResearchCollector()
             if not collector.is_configured():
                 summary["skipped"] = True
+                summary["skip_reason"] = "missing_fmp_config"
                 self.stdout.write(self.style.WARNING(json.dumps(summary, ensure_ascii=False)))
                 return
 
@@ -98,6 +109,13 @@ class Command(BaseCommand):
                 summary["alert_events_sent"] = alert_result["sent_events"]
 
             signals = detect_signals(rule, sources=["fmp"])
+            summary["signal_count"] = len(signals)
+            if not signals:
+                summary["skipped"] = True
+                summary["skip_reason"] = "no_signals"
+                self.stdout.write(self.style.WARNING(json.dumps(summary, ensure_ascii=False)))
+                return
+
             message = build_digest_message(
                 region_label="해외",
                 region_emoji="🌎",
