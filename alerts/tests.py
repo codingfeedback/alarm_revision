@@ -1,6 +1,7 @@
-﻿from datetime import date, timedelta
+﻿from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.core.management import call_command
@@ -8,15 +9,16 @@ from django.test import TestCase
 from django.utils import timezone
 
 from alerts.models import AlertRule
+from alerts.services.digests import build_digest_message, matches_us_dst_mode
 from alerts.services.revision_detector import detect_signals
 from research.models import Brokerage, ResearchReport, Security, WatchlistEntry
 
 
 class RevisionDetectorTests(TestCase):
-    def test_detects_three_upward_revisions(self) -> None:
-        security = Security.objects.create(symbol="035420", name="NAVER")
+    def test_detects_two_upward_revisions(self) -> None:
+        security = Security.objects.create(symbol="035420", name="NAVER", market="KOSPI")
         today = date(2026, 3, 7)
-        for index in range(3):
+        for index in range(2):
             brokerage = Brokerage.objects.create(name=f"Broker {index}")
             ResearchReport.objects.create(
                 source="naver",
@@ -31,20 +33,50 @@ class RevisionDetectorTests(TestCase):
             )
 
         rule = AlertRule.objects.create(
-            name="3x-up",
+            name="2x-up",
             direction=AlertRule.DIRECTION_UP,
-            min_revision_count=3,
+            min_revision_count=2,
             lookback_days=5,
             min_revision_ratio=Decimal("0.00"),
-            immediate_revision_ratio=Decimal("20.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
         )
 
-        signals = detect_signals(rule)
+        signals = detect_signals(rule, sources=["naver"])
         self.assertEqual(len(signals), 1)
         self.assertEqual(signals[0].security.symbol, "035420")
 
+    def test_detects_two_downward_revisions(self) -> None:
+        security = Security.objects.create(symbol="AAPL", name="Apple", market="US")
+        today = date(2026, 3, 7)
+        for index in range(2):
+            brokerage = Brokerage.objects.create(name=f"US Broker {index}")
+            ResearchReport.objects.create(
+                source="fmp",
+                source_report_id=f"fmp-{index}",
+                security=security,
+                brokerage=brokerage,
+                title=f"US Report {index}",
+                report_date=today - timedelta(days=index),
+                published_at=timezone.now(),
+                target_price=180 - (index * 5),
+                previous_target_price=200,
+            )
+
+        rule = AlertRule.objects.create(
+            name="2x-down",
+            direction=AlertRule.DIRECTION_DOWN,
+            min_revision_count=2,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        signals = detect_signals(rule, sources=["fmp"])
+        self.assertEqual(len(signals), 1)
+        self.assertEqual(signals[0].direction, AlertRule.DIRECTION_DOWN)
+
     def test_ignores_zero_revision_ratio(self) -> None:
-        security = Security.objects.create(symbol="271560", name="오리온")
+        security = Security.objects.create(symbol="271560", name="오리온", market="KOSPI")
         brokerage = Brokerage.objects.create(name="NoChange Broker")
         ResearchReport.objects.create(
             source="naver",
@@ -64,10 +96,39 @@ class RevisionDetectorTests(TestCase):
             min_revision_count=1,
             lookback_days=5,
             min_revision_ratio=Decimal("0.00"),
-            immediate_revision_ratio=Decimal("20.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
         )
 
-        self.assertEqual(detect_signals(rule), [])
+        self.assertEqual(detect_signals(rule, sources=["naver"]), [])
+
+
+class DigestTests(TestCase):
+    def test_build_digest_message_shows_none_when_no_signal(self) -> None:
+        rule = AlertRule.objects.create(
+            name="digest-none",
+            direction=AlertRule.DIRECTION_BOTH,
+            min_revision_count=2,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        message = build_digest_message(
+            region_label="국내",
+            region_emoji="🇰🇷",
+            rule=rule,
+            signals=[],
+            note="수집 0건 | 신규 0건 | 갱신 0건 | 즉시알림 0건",
+        )
+        self.assertIn("리비전 없음", message)
+
+    def test_matches_us_dst_mode(self) -> None:
+        summer = datetime(2026, 7, 1, 10, 15, tzinfo=ZoneInfo("Asia/Seoul"))
+        winter = datetime(2026, 1, 15, 11, 15, tzinfo=ZoneInfo("Asia/Seoul"))
+
+        self.assertTrue(matches_us_dst_mode("dst", now=summer))
+        self.assertFalse(matches_us_dst_mode("standard", now=summer))
+        self.assertTrue(matches_us_dst_mode("standard", now=winter))
 
 
 class WatchlistImportCommandTests(TestCase):

@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal
@@ -25,15 +26,23 @@ class RevisionSignal:
     raw_payload: dict
 
 
-def detect_signals(rule: AlertRule) -> list[RevisionSignal]:
+def detect_signals(
+    rule: AlertRule,
+    sources: list[str] | None = None,
+    market: str | None = None,
+) -> list[RevisionSignal]:
     window_start = timezone.localdate() - timedelta(days=rule.lookback_days)
     reports = (
         ResearchReport.objects.select_related("security", "brokerage")
-        .filter(source="naver", report_date__gte=window_start)
+        .filter(report_date__gte=window_start)
         .exclude(target_price__isnull=True)
         .exclude(previous_target_price__isnull=True)
     )
 
+    if sources:
+        reports = reports.filter(source__in=sources)
+    if market:
+        reports = reports.filter(security__market__iexact=market)
     if rule.watchlist_only:
         watchlist_ids = WatchlistEntry.objects.filter(enabled=True).values_list(
             "security_id",
@@ -58,8 +67,14 @@ def detect_signals(rule: AlertRule) -> list[RevisionSignal]:
         brokerages = {report.brokerage_id for report in matched_reports}
         revision_count = len(matched_reports)
         distinct_brokerage_count = len(brokerages)
-        count_for_threshold = distinct_brokerage_count if rule.distinct_brokerage_only else revision_count
-        ratios = [abs(report.revision_ratio) for report in matched_reports if report.revision_ratio is not None]
+        count_for_threshold = (
+            distinct_brokerage_count if rule.distinct_brokerage_only else revision_count
+        )
+        ratios = [
+            abs(report.revision_ratio)
+            for report in matched_reports
+            if report.revision_ratio is not None
+        ]
         average_revision_ratio = (
             sum(ratios, start=Decimal("0")) / len(ratios) if ratios else None
         )
@@ -70,6 +85,11 @@ def detect_signals(rule: AlertRule) -> list[RevisionSignal]:
         if count_for_threshold < rule.min_revision_count and not immediate_hit:
             continue
 
+        matched_reports = sorted(
+            matched_reports,
+            key=lambda item: (item.report_date, item.created_at),
+            reverse=True,
+        )
         security = matched_reports[0].security
         report_ids = sorted(report.id for report in matched_reports)
         dedupe_key = hashlib.sha1(
@@ -99,6 +119,7 @@ def detect_signals(rule: AlertRule) -> list[RevisionSignal]:
                     "report_ids": report_ids,
                     "brokerages": [report.brokerage.name for report in matched_reports],
                     "ratios": [str(report.revision_ratio) for report in matched_reports],
+                    "sources": sorted({report.source for report in matched_reports}),
                 },
             )
         )
@@ -127,6 +148,22 @@ def _format_eps(value) -> str:
         return str(value)
 
 
+def _first_sentence(text: str) -> str:
+    normalized = re.sub(r"\s+", " ", (text or "")).strip()
+    if not normalized:
+        return ""
+    parts = re.split(r"(?<=[.!?다])\s+", normalized)
+    return parts[0][:80].strip()
+
+
+def _build_insight(report: ResearchReport) -> str:
+    summary = _first_sentence(report.summary)
+    title = re.sub(r"\s+", " ", report.title).strip()
+    if summary and summary != title:
+        return summary
+    return title[:80]
+
+
 def _build_summary(
     security: Security,
     direction: str,
@@ -138,11 +175,14 @@ def _build_summary(
 ) -> str:
     direction_text = "상향" if direction == AlertRule.DIRECTION_UP else "하향"
     direction_emoji = "📈" if direction == AlertRule.DIRECTION_UP else "📉"
-    latest_eps = None
+    latest_report = reports[0]
+    latest_eps = next(
+        (report.eps_forecast for report in reports if report.eps_forecast is not None),
+        None,
+    )
+    insight = _build_insight(latest_report)
     report_lines = []
-    for report in sorted(reports, key=lambda item: item.report_date, reverse=True):
-        if latest_eps is None and report.eps_forecast is not None:
-            latest_eps = report.eps_forecast
+    for report in reports:
         report_lines.append(
             (
                 f"📝 {report.report_date:%Y-%m-%d} | {report.brokerage.name} | "
@@ -153,12 +193,14 @@ def _build_summary(
 
     avg_text = f"{average_revision_ratio}%" if average_revision_ratio is not None else "-"
     max_text = f"{max_revision_ratio}%" if max_revision_ratio is not None else "-"
-    body = "\n".join(report_lines)
-    return (
-        f"🏢 {security.name} ({security.symbol})\n"
-        f"{direction_emoji} 방향: {direction_text} 리비전\n"
-        f"🏦 증권사 수: {distinct_brokerage_count} | 리포트 수: {revision_count}\n"
-        f"📊 평균 변동률: {avg_text} | 최대 변동률: {max_text}\n"
-        f"🧮 EPS(최신): {_format_eps(latest_eps)}\n"
-        f"{body}"
-    )
+    lines = [
+        f"🏢 {security.name} ({security.symbol})",
+        f"{direction_emoji} 방향: {direction_text} 리비전",
+        f"🏦 증권사 수: {distinct_brokerage_count} | 리포트 수: {revision_count}",
+        f"📊 평균 변동률: {avg_text} | 최대 변동률: {max_text}",
+        f"🧮 EPS(최신): {_format_eps(latest_eps)}",
+    ]
+    if insight:
+        lines.append(f"🧾 요약: {insight}")
+    lines.extend(report_lines)
+    return "\n".join(lines)

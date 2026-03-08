@@ -27,7 +27,7 @@ def ensure_default_rule() -> AlertRule:
     return rule
 
 
-def run_alert_cycle() -> dict[str, int]:
+def run_alert_cycle(sources: list[str] | None = None) -> dict[str, int]:
     ensure_default_rule()
 
     created_events = 0
@@ -35,7 +35,7 @@ def run_alert_cycle() -> dict[str, int]:
     notifier = TelegramNotifier()
 
     for rule in AlertRule.objects.filter(is_active=True):
-        for signal in detect_signals(rule):
+        for signal in detect_signals(rule, sources=sources):
             try:
                 event = AlertEvent.objects.create(
                     rule=rule,

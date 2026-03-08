@@ -79,6 +79,7 @@ class Analyst(models.Model):
 class ResearchReport(models.Model):
     SOURCE_CHOICES = [
         ("naver", "Naver Research"),
+        ("fmp", "Financial Modeling Prep"),
         ("csv", "CSV Import"),
         ("manual", "Manual"),
     ]

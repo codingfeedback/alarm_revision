@@ -31,6 +31,11 @@ def env_float(name: str, default: float) -> float:
     return float(value)
 
 
+def env_list(name: str, default: str = "") -> list[str]:
+    value = os.getenv(name, default)
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-secret-key")
 DEBUG = env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = [
@@ -114,6 +119,13 @@ DEFAULT_LOOKBACK_DAYS = env_int("DEFAULT_LOOKBACK_DAYS", 7)
 DEFAULT_MIN_REVISION_RATIO = env_float("DEFAULT_MIN_REVISION_RATIO", 0.0)
 DEFAULT_IMMEDIATE_REVISION_RATIO = env_float("DEFAULT_IMMEDIATE_REVISION_RATIO", 20.0)
 DEFAULT_WATCHLIST_ONLY = env_bool("DEFAULT_WATCHLIST_ONLY", False)
+
+OVERSEAS_FMP_API_KEY = os.getenv("OVERSEAS_FMP_API_KEY", "")
+OVERSEAS_TICKERS = env_list(
+    "OVERSEAS_TICKERS",
+    "AAPL,MSFT,NVDA,AMZN,TSLA",
+)
+OVERSEAS_PRICE_TARGET_LIMIT = env_int("OVERSEAS_PRICE_TARGET_LIMIT", 30)
 
 LOGGING = {
     "version": 1,
