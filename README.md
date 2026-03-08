@@ -1,105 +1,111 @@
-﻿# 증권사 개정 알람 프로젝트
+﻿# 증권사 리비전 알림 프로젝트
 
-장고 + SQLite + 텔레그램 기반으로 목표주가 리비전 알림을 수집, 판단, 전송하는 데스크탑 우선 프로젝트다.
+장고 + SQLite + 텔레그램 기반으로 국내/해외 목표주가 리비전을 수집하고 알림을 보내는 프로젝트입니다.
 
-## 현재 구현 범위
+## 현재 운영 방식
 
-- `research` 앱: 종목, 증권사, 애널리스트, 리포트, 관심종목 관리
-- `alerts` 앱: 리비전 규칙, 이벤트 로그, 텔레그램 전송
-- CSV 리포트 수입 커맨드
-- 관심종목 CSV 수입 커맨드
-- 네이버 리서치 목록 수집 커맨드
-- 통합 데스크탑 파이프라인 커맨드
-- 3회 중복 리비전 감지 로직
-- Windows 실행 스크립트
+- 국내 정기 알림: 매일 08:45
+- 국내 수시 알림: 매일 08:00부터 1시간 간격
+- 해외 정기 알림: 미국 DST일 때 10:15, 표준시일 때 11:15
+- 정기 알림: 신호가 없어도 발송
+- 수시 알림: 새 리비전 신호가 생길 때만 발송
+- 기준: 최근 7일, 서로 다른 증권사 2곳 이상 목표가 상향/하향 리비전
 
-## 기본 구조
+## 핵심 구성
 
-- `research/services/naver.py`: 네이버 목록 수집 및 스냅샷 저장
-- `research/services/csv_importer.py`: 리포트 CSV 대량 적재
-- `research/services/watchlist_importer.py`: 관심종목 CSV 대량 적재
-- `research/services/ingestion.py`: 리포트 DB upsert
-- `alerts/services/revision_detector.py`: 리비전 판정
-- `alerts/services/telegram.py`: 텔레그램 알림
-- `alerts/services/orchestrator.py`: 전체 알림 사이클
+- `research/services/naver.py`: 네이버 리서치 수집
+- `research/services/fmp.py`: 해외 가격목표 API 수집
+- `research/services/ingestion.py`: 리포트 DB 적재
+- `alerts/services/revision_detector.py`: 리비전 판정 및 메시지 요약
+- `alerts/services/digests.py`: 정기 요약 메시지 생성
+- `alerts/services/orchestrator.py`: 수시 알림 전송
 
-## 빠른 시작
+## 환경 변수
 
-1. `.env.example`을 복사해 `.env`를 만든다.
-2. 의존성을 설치한다.
-3. 데이터베이스를 준비한다.
+`.env.example`을 복사해 `.env`를 만들고 아래 값을 채웁니다.
+
+```env
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+ENABLE_TELEGRAM_ALERTS=True
+
+DEFAULT_ALERT_RULE_NAME=default-2x-revision
+DEFAULT_MIN_REVISION_COUNT=2
+DEFAULT_LOOKBACK_DAYS=7
+DEFAULT_MIN_REVISION_RATIO=0
+DEFAULT_IMMEDIATE_REVISION_RATIO=9999
+DEFAULT_WATCHLIST_ONLY=False
+
+OVERSEAS_FMP_API_KEY=
+OVERSEAS_TICKERS=AAPL,MSFT,NVDA,AMZN,TSLA
+OVERSEAS_PRICE_TARGET_LIMIT=30
+```
+
+## 해외 API 설정
+
+현재 해외 데이터는 Financial Modeling Prep(FMP) 기준으로 붙어 있습니다.
+
+1. [FMP 개발자 페이지](https://site.financialmodelingprep.com/developer)에서 가입
+2. 로그인 후 [Dashboard](https://site.financialmodelingprep.com/developer/docs/dashboard)에서 API Key 확인
+3. `.env`에 `OVERSEAS_FMP_API_KEY=발급받은키` 입력
+4. 필요한 미국 티커를 `OVERSEAS_TICKERS`에 쉼표로 입력
+
+관련 공식 문서:
+- [Quickstart](https://site.financialmodelingprep.com/developer/docs/quickstart)
+- [Price Target API 문서](https://site.financialmodelingprep.com/developer/docs/price-target-api)
+- [Price Target Consensus API 문서](https://site.financialmodelingprep.com/developer/docs/stable/price-target-consensus)
+- [Pricing](https://site.financialmodelingprep.com/developer/docs/pricing)
+
+주의:
+- 현재 구현은 FMP API 키가 없으면 해외 정기 알림에서 안내 문구만 보냅니다.
+- 무료 플랜의 엔드포인트 접근 범위는 변경될 수 있으니, 실제 사용 전 Dashboard에서 호출 가능 여부를 확인해야 합니다.
+
+## 주요 명령
+
+국내 정기 알림 1회 실행:
 
 ```powershell
-python manage.py migrate
-python manage.py bootstrap_demo_data
+python manage.py send_scheduled_digest --region domestic --pages 3
 ```
 
-4. 전체 파이프라인을 실행한다.
+해외 정기 알림 1회 실행:
 
 ```powershell
-python manage.py run_desktop_pipeline --source naver --pages 1 --save-html
+python manage.py send_scheduled_digest --region overseas --respect-us-dst dst
+python manage.py send_scheduled_digest --region overseas --respect-us-dst standard
 ```
 
-## 핵심 커맨드
-
-리포트 CSV 적재:
+수시 모니터링 1회 실행:
 
 ```powershell
-python manage.py import_reports_csv .\sample_reports.csv
+python manage.py run_live_monitor --naver-pages 1
 ```
 
-관심종목 CSV 적재:
+테스트:
 
 ```powershell
-python manage.py import_watchlist_csv .\watchlist.csv --disable-missing
+python manage.py check
+python manage.py test
 ```
 
-룰 생성 또는 갱신:
+## 작업 스케줄러 스크립트
 
-```powershell
-python manage.py upsert_alert_rule default-3x-revision --direction up --min-count 3 --lookback-days 5 --watchlist-only
-```
+- `scripts/register_daily_0845_task.ps1`: 국내 정기 알림 등록
+- `scripts/register_live_monitor_task.ps1`: 국내 수시 모니터링 등록
+- `scripts/register_overseas_digest_tasks.ps1`: 해외 DST/표준시 정기 알림 등록
+- `scripts/enable_wake_for_tasks.ps1`: WakeToRun 및 wake timers 활성화
 
-텔레그램 테스트:
+## 절전 관련
 
-```powershell
-python manage.py send_telegram_test --message "알림 테스트"
-```
+현재 작업은 모두 `WakeToRun=True`로 설정했고 Windows wake timers도 켰습니다.
 
-## CSV 예시 컬럼
+하지만 아래 경우에는 자동 실행이 보장되지 않습니다.
+- 최대 절전(Hibernate)
+- 전원 꺼짐(Shutdown)
+- BIOS/메인보드에서 wake timer 차단
+- 노트북/PC 전원 정책이 wake 이벤트를 막는 경우
 
-리포트 CSV:
-
-```text
-source,source_report_id,symbol,security_name,market,brokerage_name,brokerage_code,analyst_name,title,report_date,published_at,target_price,previous_target_price,eps_forecast,opinion,report_url,summary
-```
-
-관심종목 CSV:
-
-```text
-symbol,security_name,market,priority,enabled,notes
-005930,Samsung Electronics,KOSPI,1,true,core holding
-000660,SK hynix,KOSPI,2,true,ai memory
-```
-
-## 운영 자동화 권장안
-
-- 데스크탑: 실제 수집, 알림 실행, 스케줄러 등록 담당
-- 노트북: 파서 수정, 규칙 튜닝, 결과 검토, git 병합 담당
-- git 브랜치 전략:
-  - `main`: 안정 버전
-  - `codex/parser-*`: 수집기 실험
-  - `codex/rule-*`: 판정 로직 실험
-  - `codex/ops-*`: 스케줄러와 운영 자동화 작업
-- Windows 작업 스케줄러:
-  - 08:20: `scripts/run_desktop_cycle.ps1`
-  - 08:40: `scripts/run_desktop_cycle.ps1`
-  - 09:00~15:30: 30분 간격 반복
-- 실행 결과 요약 JSON은 `data/runs/` 아래에 저장된다.
-
-## 다음 우선 작업
-
-- 네이버 상세 페이지에서 목표가와 EPS를 더 정교하게 추출
-- 증권사별 직전 리포트 자동 연결 강화
-- 애널리스트, 섹터 가중치 모델 추가
-- 결과 요약을 텔레그램 일간 리포트 형태로 확장
+가장 안정적인 운영은:
+- 데스크탑 전원 연결 유지
+- 최대 절전 끄기
+- 일반 Sleep만 사용
