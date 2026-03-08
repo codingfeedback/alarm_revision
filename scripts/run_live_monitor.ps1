@@ -6,4 +6,5 @@ $summaryDir = Join-Path $projectRoot "data\runs"
 New-Item -ItemType Directory -Force $summaryDir | Out-Null
 $summaryPath = Join-Path $summaryDir ("live_monitor_{0}.json" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
 
-& $pythonExe (Join-Path $projectRoot "manage.py") run_live_monitor --naver-pages 1 | Tee-Object -FilePath $summaryPath
+& $pythonExe (Join-Path $projectRoot "manage.py") run_live_monitor --naver-pages 1 --skip-overseas | Tee-Object -FilePath $summaryPath
+
