@@ -11,6 +11,7 @@ from alerts.services.telegram import TelegramNotifier
 from research.services.fmp import FMPResearchCollector
 from research.services.ingestion import ingest_reports
 from research.services.naver import NaverResearchCollector
+from research.services.naver_quotes import NaverQuoteCollector
 
 
 class Command(BaseCommand):
@@ -63,6 +64,10 @@ class Command(BaseCommand):
 
             signals = detect_signals(rule, sources=["naver"])
             summary["signal_count"] = len(signals)
+            quote_collector = NaverQuoteCollector()
+            price_snapshots = quote_collector.fetch_snapshots(
+                [signal.security.symbol for signal in signals]
+            )
             message = build_digest_message(
                 region_label="국내",
                 region_emoji="🇰🇷",
@@ -72,6 +77,7 @@ class Command(BaseCommand):
                     f"수집 {len(reports)}건 | 신규 {created}건 | 갱신 {updated}건 | "
                     f"즉시알림 {summary['alert_events_sent']}건"
                 ),
+                price_snapshots=price_snapshots,
             )
         else:
             mode = options["respect_us_dst"]
@@ -124,4 +130,3 @@ class Command(BaseCommand):
             summary["digest_sent"] = True
 
         self.stdout.write(self.style.SUCCESS(json.dumps(summary, ensure_ascii=False)))
-

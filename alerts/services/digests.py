@@ -2,12 +2,14 @@
 
 import re
 from datetime import datetime, timezone as dt_timezone
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 
 from alerts.models import AlertRule
 from alerts.services.revision_detector import RevisionSignal
+from research.services.naver_quotes import StockPriceSnapshot
 
 US_EASTERN_TZ = ZoneInfo("America/New_York")
 
@@ -34,6 +36,7 @@ def build_digest_message(
     now: datetime | None = None,
     note: str = "",
     unavailable_reason: str = "",
+    price_snapshots: dict[str, StockPriceSnapshot] | None = None,
 ) -> str:
     generated_at = now or timezone.localtime()
     lines = [
@@ -69,10 +72,29 @@ def build_digest_message(
                 f"| 평균 {ratio_text} | EPS {eps_text}"
             )
         )
+        snapshot = (price_snapshots or {}).get(signal.security.symbol)
+        price_line = _build_price_line(snapshot=snapshot, target_price=latest_report.target_price)
+        if price_line:
+            lines.append(price_line)
         insight = _insight_from_report(latest_report.title, latest_report.summary)
         if insight:
             lines.append(f"🧾 {insight}")
     return "\n".join(lines)
+
+
+def _build_price_line(snapshot: StockPriceSnapshot | None, target_price: int | None) -> str:
+    if snapshot is None or snapshot.previous_close is None or target_price is None:
+        return ""
+    upside = (
+        (Decimal(target_price) - Decimal(snapshot.previous_close))
+        / Decimal(snapshot.previous_close)
+        * Decimal("100")
+    ).quantize(Decimal("0.01"))
+    current_text = f" | 현재가 {snapshot.current_price:,}원" if snapshot.current_price else ""
+    return (
+        f"💰 전일종가 {snapshot.previous_close:,}원{current_text} "
+        f"| 최신TP {target_price:,}원 | 괴리 {upside:+.2f}%"
+    )
 
 
 def _insight_from_report(title: str, summary: str) -> str:

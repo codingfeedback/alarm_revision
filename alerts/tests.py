@@ -12,6 +12,7 @@ from alerts.models import AlertRule
 from alerts.services.digests import build_digest_message, matches_us_dst_mode
 from alerts.services.revision_detector import detect_signals
 from research.models import Brokerage, ResearchReport, Security, WatchlistEntry
+from research.services.naver_quotes import StockPriceSnapshot
 
 
 class RevisionDetectorTests(TestCase):
@@ -121,6 +122,47 @@ class DigestTests(TestCase):
             note="수집 0건 | 신규 0건 | 갱신 0건 | 즉시알림 0건",
         )
         self.assertIn("리비전 없음", message)
+
+    def test_build_digest_message_includes_previous_close_gap(self) -> None:
+        security = Security.objects.create(symbol="005930", name="삼성전자", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="Test Broker")
+        report = ResearchReport.objects.create(
+            source="naver",
+            source_report_id="digest-price-1",
+            security=security,
+            brokerage=brokerage,
+            title="HBM 모멘텀 반영",
+            summary="HBM 수요 확대로 실적 추정이 개선됐다.",
+            report_date=date(2026, 3, 7),
+            published_at=timezone.now(),
+            target_price=150000,
+            previous_target_price=120000,
+        )
+        rule = AlertRule.objects.create(
+            name="digest-price",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=1,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+        signal = detect_signals(rule, sources=["naver"])[0]
+        message = build_digest_message(
+            region_label="국내",
+            region_emoji="🇰🇷",
+            rule=rule,
+            signals=[signal],
+            price_snapshots={
+                "005930": StockPriceSnapshot(
+                    symbol="005930",
+                    current_price=101000,
+                    previous_close=100000,
+                )
+            },
+        )
+        self.assertIn("전일종가 100,000원", message)
+        self.assertIn("최신TP 150,000원", message)
+        self.assertIn("괴리 +50.00%", message)
 
     def test_matches_us_dst_mode(self) -> None:
         summer = datetime(2026, 7, 1, 10, 15, tzinfo=ZoneInfo("Asia/Seoul"))

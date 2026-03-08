@@ -19,7 +19,7 @@ def extract_pdf_text(session, pdf_url: str, timeout: int, max_pages: int = 3) ->
 def extract_target_price_from_pdf(text: str) -> int | None:
     patterns = [
         r"목표주가\s*[:：]?\s*([0-9,]+)",
-        r"목표가\s*[:：]?\s*([0-9,]+)",
+        r"목표 가격\s*[:：]?\s*([0-9,]+)",
         r"TP\s*[:：]?\s*([0-9,]+)",
     ]
     for pattern in patterns:
@@ -32,8 +32,12 @@ def extract_target_price_from_pdf(text: str) -> int | None:
 def extract_eps_forecast_from_pdf(text: str) -> str | None:
     patterns = [
         r"EPS\s*[:：]?\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"EPS\(원\)\s*[:：]?\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"지배주주EPS\s*[:：]?\s*([0-9,]+(?:\.[0-9]+)?)",
         r"2026E\s+EPS\s*([0-9,]+(?:\.[0-9]+)?)",
         r"2025E\s+EPS\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"2026E\s+지배주주EPS\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"2025E\s+지배주주EPS\s*([0-9,]+(?:\.[0-9]+)?)",
     ]
     for pattern in patterns:
         matched = re.search(pattern, text, flags=re.IGNORECASE)
