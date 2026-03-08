@@ -1,0 +1,15 @@
+﻿.env
+.tmp/
+.tmp_tests/
+.venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+db.sqlite3
+deps/
+wheelhouse/
+vendor_lib/
+.packages/
+data/raw/
+data/runs/
+staticfiles/

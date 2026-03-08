@@ -1,0 +1,4 @@
+﻿symbol,security_name,market,priority,enabled,notes
+005930,Samsung Electronics,KOSPI,1,true,core holding
+000660,SK hynix,KOSPI,2,true,ai memory
+035420,NAVER,KOSPI,3,true,platform

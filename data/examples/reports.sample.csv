@@ -1,0 +1,2 @@
+﻿source,source_report_id,symbol,security_name,market,brokerage_name,brokerage_code,analyst_name,title,report_date,published_at,target_price,previous_target_price,eps_forecast,opinion,report_url,summary
+csv,sample-1,005930,Samsung Electronics,KOSPI,Mirae Asset,,Kim Analyst,Sample Revision,2026-03-08,2026-03-08 08:10:00,120000,100000,5200.5,BUY,https://example.com/report/1,Sample upward revision
