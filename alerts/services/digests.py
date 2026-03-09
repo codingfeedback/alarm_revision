@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 import re
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -39,23 +39,22 @@ def build_digest_message(
     price_snapshots: dict[str, StockPriceSnapshot] | None = None,
 ) -> str:
     generated_at = now or timezone.localtime()
-    lines = [
-        f"{region_emoji} {region_label} 정기 점검 | {generated_at:%Y-%m-%d %H:%M}",
+    sections = [
         (
-            f"📌 기준: 최근 {rule.lookback_days}일, 서로 다른 증권사 "
-            f"{rule.min_revision_count}곳 이상 목표가 리비전"
-        ),
+            f"{region_emoji} {region_label} 정기 점검 | {generated_at:%Y-%m-%d %H:%M}\n"
+            f"📌 기준: 최근 {rule.lookback_days}일, 서로 다른 증권사 {rule.min_revision_count}곳 이상 목표가 리비전"
+        )
     ]
     if note:
-        lines.append(f"ℹ️ 상태: {note}")
+        sections.append(f"ℹ️ 상태\n{note}")
     if unavailable_reason:
-        lines.append(f"⚠️ 안내: {unavailable_reason}")
-        return "\n".join(lines)
+        sections.append(f"⚠️ 안내\n{unavailable_reason}")
+        return "\n\n".join(sections)
     if not signals:
-        lines.append("🔕 현재 기준 리비전 없음")
-        return "\n".join(lines)
+        sections.append("🔕 결과\n현재 기준 리비전 없음")
+        return "\n\n".join(sections)
 
-    lines.append(f"✅ 감지 종목: {len(signals)}건")
+    sections.append(f"✅ 감지 종목\n{len(signals)}건")
     for signal in _sorted_signals(signals):
         latest_report = signal.reports[0]
         ratio = signal.average_revision_ratio or signal.max_revision_ratio
@@ -65,36 +64,33 @@ def build_digest_message(
             None,
         )
         eps_text = f"{eps_value:,.2f}" if eps_value is not None else "N/A"
-        lines.append(
-            (
-                f"{'📈' if signal.direction == AlertRule.DIRECTION_UP else '📉'} "
-                f"{signal.security.name} ({signal.security.symbol}) | 증권사 {signal.distinct_brokerage_count}곳 "
-                f"| 평균 {ratio_text} | EPS {eps_text}"
-            )
+        lines = [
+            f"{'📈' if signal.direction == AlertRule.DIRECTION_UP else '📉'} {signal.security.name} ({signal.security.symbol})",
+            f"증권사 {signal.distinct_brokerage_count}곳 | 평균 변동률 {ratio_text}",
+        ]
+        price_line = _build_price_line(
+            snapshot=(price_snapshots or {}).get(signal.security.symbol),
+            target_price=latest_report.target_price,
         )
-        snapshot = (price_snapshots or {}).get(signal.security.symbol)
-        price_line = _build_price_line(snapshot=snapshot, target_price=latest_report.target_price)
         if price_line:
             lines.append(price_line)
+        lines.append(f"EPS {eps_text}")
         insight = _insight_from_report(latest_report.title, latest_report.summary)
         if insight:
-            lines.append(f"🧾 {insight}")
-    return "\n".join(lines)
+            lines.append(f"요약: {insight}")
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections)
 
 
 def _build_price_line(snapshot: StockPriceSnapshot | None, target_price: int | None) -> str:
-    if snapshot is None or snapshot.previous_close is None or target_price is None:
+    if snapshot is None or snapshot.current_price is None or target_price is None:
         return ""
     upside = (
-        (Decimal(target_price) - Decimal(snapshot.previous_close))
-        / Decimal(snapshot.previous_close)
+        (Decimal(target_price) - Decimal(snapshot.current_price))
+        / Decimal(snapshot.current_price)
         * Decimal("100")
     ).quantize(Decimal("0.01"))
-    current_text = f" | 현재가 {snapshot.current_price:,}원" if snapshot.current_price else ""
-    return (
-        f"💰 전일종가 {snapshot.previous_close:,}원{current_text} "
-        f"| 최신TP {target_price:,}원 | 괴리 {upside:+.2f}%"
-    )
+    return f"현재가 {snapshot.current_price:,}원 | 최신TP {target_price:,}원 | 괴리 {upside:+.2f}%"
 
 
 def _insight_from_report(title: str, summary: str) -> str:

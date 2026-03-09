@@ -123,10 +123,10 @@ class DigestTests(TestCase):
         )
         self.assertIn("리비전 없음", message)
 
-    def test_build_digest_message_includes_previous_close_gap(self) -> None:
+    def test_build_digest_message_includes_current_price_gap(self) -> None:
         security = Security.objects.create(symbol="005930", name="삼성전자", market="KOSPI")
         brokerage = Brokerage.objects.create(name="Test Broker")
-        report = ResearchReport.objects.create(
+        ResearchReport.objects.create(
             source="naver",
             source_report_id="digest-price-1",
             security=security,
@@ -155,14 +155,15 @@ class DigestTests(TestCase):
             price_snapshots={
                 "005930": StockPriceSnapshot(
                     symbol="005930",
-                    current_price=101000,
-                    previous_close=100000,
+                    current_price=100000,
+                    previous_close=99000,
                 )
             },
         )
-        self.assertIn("전일종가 100,000원", message)
+        self.assertIn("현재가 100,000원", message)
         self.assertIn("최신TP 150,000원", message)
         self.assertIn("괴리 +50.00%", message)
+        self.assertNotIn("전일종가", message)
 
     def test_matches_us_dst_mode(self) -> None:
         summer = datetime(2026, 7, 1, 10, 15, tzinfo=ZoneInfo("Asia/Seoul"))

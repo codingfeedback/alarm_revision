@@ -58,7 +58,10 @@ class Command(BaseCommand):
                 }
             )
             if not options["skip_live_alerts"]:
-                alert_result = run_alert_cycle(sources=["naver"])
+                alert_result = run_alert_cycle(
+                    sources=["naver"],
+                    rule_names=[rule.name],
+                )
                 summary["alert_events_created"] = alert_result["created_events"]
                 summary["alert_events_sent"] = alert_result["sent_events"]
 
@@ -108,7 +111,10 @@ class Command(BaseCommand):
                     }
                 )
                 if not options["skip_live_alerts"]:
-                    alert_result = run_alert_cycle(sources=["fmp"])
+                    alert_result = run_alert_cycle(
+                        sources=["fmp"],
+                        rule_names=[rule.name],
+                    )
                     summary["alert_events_created"] = alert_result["created_events"]
                     summary["alert_events_sent"] = alert_result["sent_events"]
 
