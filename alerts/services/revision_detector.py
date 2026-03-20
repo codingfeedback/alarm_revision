@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import re
@@ -162,6 +162,12 @@ def _format_eps(value) -> str:
         return str(value)
 
 
+def _format_ratio(value: Decimal | None) -> str:
+    if value is None:
+        return "-"
+    return f"{Decimal(value):.2f}%"
+
+
 def _first_sentence(text: str) -> str:
     normalized = re.sub(r"\s+", " ", (text or "")).strip()
     if not normalized:
@@ -199,14 +205,14 @@ def _build_summary(
     for report in reports:
         report_lines.append(
             (
-                f"📝 {report.report_date:%Y-%m-%d} | {report.brokerage.name} | "
-                f"{report.previous_target_price:,} -> {report.target_price:,}원 | "
-                f"{report.revision_ratio}% | EPS {_format_eps(report.eps_forecast)}"
+                f"📝 {report.report_date:%Y-%m-%d} | {report.brokerage.name}\n"
+                f"목표가 {report.previous_target_price:,} -> {report.target_price:,}원\n"
+                f"변동률 {_format_ratio(report.revision_ratio)} | EPS {_format_eps(report.eps_forecast)}"
             )
         )
 
-    avg_text = f"{average_revision_ratio}%" if average_revision_ratio is not None else "-"
-    max_text = f"{max_revision_ratio}%" if max_revision_ratio is not None else "-"
+    avg_text = _format_ratio(average_revision_ratio)
+    max_text = _format_ratio(max_revision_ratio)
     lines = [
         f"🏢 {security.name} ({security.symbol})",
         f"{direction_emoji} 방향: {direction_text} 리비전",
