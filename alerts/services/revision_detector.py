@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from alerts.models import AlertRule
 from research.models import ResearchReport, Security, WatchlistEntry
+from research.services.naver_quotes import StockPriceSnapshot
 
 
 @dataclass(slots=True)
@@ -24,6 +25,19 @@ class RevisionSignal:
     dedupe_key: str
     summary: str
     raw_payload: dict
+
+
+def attach_current_prices(
+    signals: list[RevisionSignal],
+    snapshots: dict[str, StockPriceSnapshot],
+) -> list[RevisionSignal]:
+    for signal in signals:
+        snapshot = snapshots.get(signal.security.symbol)
+        if snapshot is None or snapshot.current_price is None:
+            continue
+        signal.summary = _insert_current_price_line(signal.summary, snapshot.current_price)
+        signal.raw_payload["current_price"] = snapshot.current_price
+    return signals
 
 
 def detect_signals(
@@ -203,4 +217,16 @@ def _build_summary(
     if insight:
         lines.append(f"🧾 요약: {insight}")
     lines.extend(report_lines)
+    return "\n".join(lines)
+
+
+def _insert_current_price_line(summary: str, current_price: int) -> str:
+    lines = summary.splitlines()
+    current_price_label = "현재가"
+    current_price_line = f"💰 {current_price_label}: {current_price:,}원"
+    if any(current_price_label in line for line in lines):
+        return summary
+
+    insert_at = 4 if len(lines) >= 5 else len(lines)
+    lines.insert(insert_at, current_price_line)
     return "\n".join(lines)

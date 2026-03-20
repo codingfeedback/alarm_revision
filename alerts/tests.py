@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from alerts.models import AlertRule
 from alerts.services.digests import build_digest_message, matches_us_dst_mode
-from alerts.services.revision_detector import detect_signals
+from alerts.services.revision_detector import attach_current_prices, detect_signals
 from research.models import Brokerage, ResearchReport, Security, WatchlistEntry
 from research.services.naver_quotes import StockPriceSnapshot
 
@@ -18,7 +18,7 @@ from research.services.naver_quotes import StockPriceSnapshot
 class RevisionDetectorTests(TestCase):
     def test_detects_two_upward_revisions(self) -> None:
         security = Security.objects.create(symbol="035420", name="NAVER", market="KOSPI")
-        today = date(2026, 3, 7)
+        today = timezone.localdate()
         for index in range(2):
             brokerage = Brokerage.objects.create(name=f"Broker {index}")
             ResearchReport.objects.create(
@@ -48,7 +48,7 @@ class RevisionDetectorTests(TestCase):
 
     def test_detects_two_downward_revisions(self) -> None:
         security = Security.objects.create(symbol="AAPL", name="Apple", market="US")
-        today = date(2026, 3, 7)
+        today = timezone.localdate()
         for index in range(2):
             brokerage = Brokerage.objects.create(name=f"US Broker {index}")
             ResearchReport.objects.create(
@@ -85,7 +85,7 @@ class RevisionDetectorTests(TestCase):
             security=security,
             brokerage=brokerage,
             title="No change",
-            report_date=date(2026, 3, 7),
+            report_date=timezone.localdate(),
             published_at=timezone.now(),
             target_price=100000,
             previous_target_price=100000,
@@ -101,6 +101,44 @@ class RevisionDetectorTests(TestCase):
         )
 
         self.assertEqual(detect_signals(rule, sources=["naver"]), [])
+
+    def test_attach_current_prices_adds_live_price_to_summary(self) -> None:
+        security = Security.objects.create(symbol="005930", name="삼성전자", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="Live Broker")
+        ResearchReport.objects.create(
+            source="naver",
+            source_report_id="live-price-1",
+            security=security,
+            brokerage=brokerage,
+            title="Live price test",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=150000,
+            previous_target_price=120000,
+        )
+
+        rule = AlertRule.objects.create(
+            name="live-price",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=1,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        signal = detect_signals(rule, sources=["naver"])[0]
+        attach_current_prices(
+            [signal],
+            {
+                "005930": StockPriceSnapshot(
+                    symbol="005930",
+                    current_price=101000,
+                    previous_close=100000,
+                )
+            },
+        )
+
+        self.assertIn("현재가: 101,000원", signal.summary)
 
 
 class DigestTests(TestCase):
@@ -133,7 +171,7 @@ class DigestTests(TestCase):
             brokerage=brokerage,
             title="HBM 모멘텀 반영",
             summary="HBM 수요 확대로 실적 추정이 개선됐다.",
-            report_date=date(2026, 3, 7),
+            report_date=timezone.localdate(),
             published_at=timezone.now(),
             target_price=150000,
             previous_target_price=120000,

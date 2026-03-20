@@ -4,8 +4,9 @@ from django.db import IntegrityError
 from django.utils import timezone
 
 from alerts.models import AlertEvent, AlertRule
-from alerts.services.revision_detector import detect_signals
+from alerts.services.revision_detector import attach_current_prices, detect_signals
 from alerts.services.telegram import TelegramNotifier
+from research.services.naver_quotes import NaverQuoteCollector
 
 
 def ensure_default_rule() -> AlertRule:
@@ -36,12 +37,19 @@ def run_alert_cycle(
     created_events = 0
     sent_events = 0
     notifier = TelegramNotifier()
+    quote_collector = NaverQuoteCollector()
     rules = AlertRule.objects.filter(is_active=True)
     if rule_names:
         rules = rules.filter(name__in=rule_names)
 
     for rule in rules:
-        for signal in detect_signals(rule, sources=sources):
+        signals = detect_signals(rule, sources=sources)
+        if sources and "naver" in sources:
+            snapshots = quote_collector.fetch_snapshots(
+                [signal.security.symbol for signal in signals]
+            )
+            signals = attach_current_prices(signals, snapshots)
+        for signal in signals:
             try:
                 event = AlertEvent.objects.create(
                     rule=rule,
