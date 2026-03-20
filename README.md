@@ -4,7 +4,7 @@
 
 ## 현재 운영 방식
 
-- 국내 정기 알림: 매일 08:45
+- 국내 정기 알림: 매일 08:30
 - 국내 수시 알림: 매일 08:00부터 1시간 간격
 - 해외 정기 알림: 미국 DST일 때 10:15, 표준시일 때 11:15
 - 정기 알림: 신호가 없어도 발송
@@ -90,7 +90,7 @@ python manage.py test
 
 ## 작업 스케줄러 스크립트
 
-- `scripts/register_daily_0845_task.ps1`: 국내 정기 알림 등록
+- `scripts/register_daily_0845_task.ps1`: 국내 정기 알림 등록(08:30)
 - `scripts/register_live_monitor_task.ps1`: 국내 수시 모니터링 등록
 - `scripts/register_overseas_digest_tasks.ps1`: 해외 DST/표준시 정기 알림 등록
 - `scripts/enable_wake_for_tasks.ps1`: WakeToRun 및 wake timers 활성화
