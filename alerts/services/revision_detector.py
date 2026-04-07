@@ -233,6 +233,12 @@ def _insert_current_price_line(summary: str, current_price: int) -> str:
     if any(current_price_label in line for line in lines):
         return summary
 
+    summary_prefix = "\U0001f9fe \uc694\uc57d:"
+    for index, line in enumerate(lines):
+        if line.startswith(summary_prefix):
+            lines.insert(index + 1, current_price_line)
+            return "\n".join(lines)
+
     insert_at = 4 if len(lines) >= 5 else len(lines)
     lines.insert(insert_at, current_price_line)
     return "\n".join(lines)
