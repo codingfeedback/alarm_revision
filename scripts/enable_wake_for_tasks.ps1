@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $tasks = @(
-    "AlarmRevisionDaily0800",
+    "AlarmRevisionDaily0730",
     "AlarmRevisionLiveMonitor",
     "AlarmRevisionOverseasDigestDST",
     "AlarmRevisionOverseasDigestStandard"
