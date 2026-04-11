@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from alerts.models import AlertRule
 from alerts.services.digests import build_digest_message, matches_us_dst_mode
+from alerts.services.opinion_engine import assess_signal
 from alerts.services.revision_detector import attach_current_prices, detect_signals
 from research.models import Brokerage, ResearchReport, Security, WatchlistEntry
 from research.services.naver_quotes import StockPriceSnapshot
@@ -217,6 +218,73 @@ class DigestTests(TestCase):
         self.assertTrue(matches_us_dst_mode("dst", now=summer))
         self.assertFalse(matches_us_dst_mode("standard", now=summer))
         self.assertTrue(matches_us_dst_mode("standard", now=winter))
+
+
+class OpinionEngineTests(TestCase):
+    def test_buy_opinion_alone_stays_buy_not_strong_buy(self) -> None:
+        security = Security.objects.create(symbol="005930", name="삼성전자", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="Opinion Broker")
+        ResearchReport.objects.create(
+            source="naver",
+            source_report_id="opinion-buy-1",
+            security=security,
+            brokerage=brokerage,
+            title="보수적 테스트",
+            summary="실적 기대는 유지되지만 추가 확인이 필요하다.",
+            opinion="매수",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=120000,
+            previous_target_price=110000,
+        )
+
+        rule = AlertRule.objects.create(
+            name="opinion-buy",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=1,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        signal = detect_signals(rule, sources=["naver"])[0]
+        assessment = assess_signal(signal, current_price=100000)
+
+        self.assertEqual(assessment.label, "매수")
+
+    def test_strong_buy_requires_multiple_objective_signals(self) -> None:
+        security = Security.objects.create(symbol="000660", name="SK하이닉스", market="KOSPI")
+        today = timezone.localdate()
+        for index in range(3):
+            brokerage = Brokerage.objects.create(name=f"Strong Broker {index}")
+            ResearchReport.objects.create(
+                source="naver",
+                source_report_id=f"strong-buy-{index}",
+                security=security,
+                brokerage=brokerage,
+                title=f"HBM strong {index}",
+                summary="고대역폭 메모리 수요 확대가 실적 추정을 밀어올리고 있다.",
+                opinion="매수",
+                report_date=today - timedelta(days=index),
+                published_at=timezone.now(),
+                target_price=180000,
+                previous_target_price=130000,
+            )
+
+        rule = AlertRule.objects.create(
+            name="opinion-strong-buy",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=2,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+            distinct_brokerage_only=True,
+        )
+
+        signal = detect_signals(rule, sources=["naver"])[0]
+        assessment = assess_signal(signal, current_price=100000)
+
+        self.assertEqual(assessment.label, "적극매수")
 
 
 class WatchlistImportCommandTests(TestCase):

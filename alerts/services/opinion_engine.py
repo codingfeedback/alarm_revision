@@ -35,27 +35,29 @@ def assess_signal(
     )
 
     direction_sign = 1 if signal.direction == AlertRule.DIRECTION_UP else -1
-    score = direction_sign * 2
+    score = direction_sign
 
     if signal.distinct_brokerage_count >= 3:
+        score += direction_sign
+    if signal.distinct_brokerage_count >= 5:
         score += direction_sign
 
     revision_ratio = signal.max_revision_ratio or signal.average_revision_ratio
     if revision_ratio is not None:
         revision_strength = abs(Decimal(revision_ratio))
-        if revision_strength >= Decimal("20"):
+        if revision_strength >= Decimal("30"):
             score += direction_sign * 2
-        elif revision_strength >= Decimal("10"):
+        elif revision_strength >= Decimal("15"):
             score += direction_sign
 
     score += _opinion_score(source_opinion)
 
     if upside_ratio is not None:
-        if upside_ratio >= Decimal("25"):
+        if upside_ratio >= Decimal("40"):
             score += 2
-        elif upside_ratio >= Decimal("10"):
+        elif upside_ratio >= Decimal("20"):
             score += 1
-        elif upside_ratio <= Decimal("-15"):
+        elif upside_ratio <= Decimal("-20"):
             score -= 2
         elif upside_ratio <= Decimal("0"):
             score -= 1
@@ -110,22 +112,22 @@ def _compute_upside_ratio(
 
 def _opinion_score(source_opinion: str) -> int:
     return {
-        "적극매수": 3,
-        "매수": 2,
+        "적극매수": 2,
+        "매수": 1,
         "중립": 0,
-        "매도": -2,
-        "적극매도": -3,
+        "매도": -1,
+        "적극매도": -2,
     }.get(source_opinion, 0)
 
 
 def _label_from_score(score: int) -> str:
-    if score >= 5:
+    if score >= 6:
         return "적극매수"
-    if score >= 2:
+    if score >= 3:
         return "매수"
-    if score <= -5:
+    if score <= -6:
         return "적극매도"
-    if score <= -2:
+    if score <= -3:
         return "매도"
     return "중립"
 
