@@ -9,6 +9,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from alerts.models import AlertRule
+from alerts.services.opinion_engine import assess_signal
 from research.models import ResearchReport, Security, WatchlistEntry
 from research.services.naver_quotes import StockPriceSnapshot
 
@@ -33,10 +34,19 @@ def attach_current_prices(
 ) -> list[RevisionSignal]:
     for signal in signals:
         snapshot = snapshots.get(signal.security.symbol)
-        if snapshot is None or snapshot.current_price is None:
-            continue
-        signal.summary = _insert_current_price_line(signal.summary, snapshot.current_price)
-        signal.raw_payload["current_price"] = snapshot.current_price
+        current_price = snapshot.current_price if snapshot is not None else None
+        signal.summary = _build_summary(
+            security=signal.security,
+            direction=signal.direction,
+            revision_count=signal.revision_count,
+            distinct_brokerage_count=signal.distinct_brokerage_count,
+            average_revision_ratio=signal.average_revision_ratio,
+            max_revision_ratio=signal.max_revision_ratio,
+            reports=signal.reports,
+            current_price=current_price,
+        )
+        if current_price is not None:
+            signal.raw_payload["current_price"] = current_price
     return signals
 
 
@@ -192,6 +202,7 @@ def _build_summary(
     average_revision_ratio: Decimal | None,
     max_revision_ratio: Decimal | None,
     reports: list[ResearchReport],
+    current_price: int | None = None,
 ) -> str:
     direction_text = "상향" if direction == AlertRule.DIRECTION_UP else "하향"
     direction_emoji = "📈" if direction == AlertRule.DIRECTION_UP else "📉"
@@ -201,6 +212,20 @@ def _build_summary(
         None,
     )
     insight = _build_insight(latest_report)
+    signal = RevisionSignal(
+        security=security,
+        direction=direction,
+        reports=reports,
+        revision_count=revision_count,
+        distinct_brokerage_count=distinct_brokerage_count,
+        average_revision_ratio=average_revision_ratio,
+        max_revision_ratio=max_revision_ratio,
+        dedupe_key="",
+        summary="",
+        raw_payload={},
+    )
+    opinion = assess_signal(signal, current_price=current_price)
+
     report_lines = []
     for report in reports:
         report_lines.append(
@@ -218,27 +243,13 @@ def _build_summary(
         f"{direction_emoji} 방향: {direction_text} 리비전",
         f"🏦 증권사 수: {distinct_brokerage_count} | 리포트 수: {revision_count}",
         f"📊 평균 변동률: {avg_text} | 최대 변동률: {max_text}",
-        f"🧮 EPS(최신): {_format_eps(latest_eps)}",
     ]
     if insight:
         lines.append(f"🧾 요약: {insight}")
+    if current_price is not None:
+        lines.append(f"💰 현재가: {current_price:,}원")
+    lines.append(f"🧪 EPS(최신): {_format_eps(latest_eps)}")
+    lines.append(f"🤖 참고 의견: {opinion.label}")
+    lines.append(f"💬 {opinion.comment}")
     lines.extend(report_lines)
-    return "\n".join(lines)
-
-
-def _insert_current_price_line(summary: str, current_price: int) -> str:
-    lines = summary.splitlines()
-    current_price_label = "현재가"
-    current_price_line = f"💰 {current_price_label}: {current_price:,}원"
-    if any(current_price_label in line for line in lines):
-        return summary
-
-    summary_prefix = "\U0001f9fe \uc694\uc57d:"
-    for index, line in enumerate(lines):
-        if line.startswith(summary_prefix):
-            lines.insert(index + 1, current_price_line)
-            return "\n".join(lines)
-
-    insert_at = 4 if len(lines) >= 5 else len(lines)
-    lines.insert(insert_at, current_price_line)
     return "\n".join(lines)

@@ -111,6 +111,8 @@ class RevisionDetectorTests(TestCase):
             security=security,
             brokerage=brokerage,
             title="Live price test",
+            summary="HBM 수요 확대로 실적 추정이 개선됐다.",
+            opinion="매수",
             report_date=timezone.localdate(),
             published_at=timezone.now(),
             target_price=150000,
@@ -139,6 +141,8 @@ class RevisionDetectorTests(TestCase):
         )
 
         self.assertIn("현재가: 101,000원", signal.summary)
+        self.assertIn("참고 의견:", signal.summary)
+        self.assertIn("매수", signal.summary)
 
 
 class DigestTests(TestCase):
@@ -171,6 +175,7 @@ class DigestTests(TestCase):
             brokerage=brokerage,
             title="HBM 모멘텀 반영",
             summary="HBM 수요 확대로 실적 추정이 개선됐다.",
+            opinion="매수",
             report_date=timezone.localdate(),
             published_at=timezone.now(),
             target_price=150000,
@@ -201,6 +206,8 @@ class DigestTests(TestCase):
         self.assertIn("현재가 100,000원", message)
         self.assertIn("최신TP 150,000원", message)
         self.assertIn("괴리 +50.00%", message)
+        self.assertIn("참고 의견", message)
+        self.assertIn("최근 리포트 투자의견은 매수입니다.", message)
         self.assertNotIn("전일종가", message)
 
     def test_matches_us_dst_mode(self) -> None:
