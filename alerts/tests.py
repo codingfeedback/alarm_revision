@@ -11,6 +11,8 @@ from django.utils import timezone
 from alerts.models import AlertRule
 from alerts.services.digests import build_digest_message, matches_us_dst_mode
 from alerts.services.opinion_engine import assess_signal
+from alerts.services.signal_analysis import analyze_signal
+from alerts.services.telegram import chunk_message
 from alerts.services.revision_detector import (
     attach_current_prices,
     detect_signals,
@@ -310,6 +312,9 @@ class RevisionDetectorTests(TestCase):
         self.assertIn("현재가: 101,000원", signal.summary)
         self.assertIn("참고 의견:", signal.summary)
         self.assertIn("매수", signal.summary)
+        self.assertIn("최신 목표가: 150,000원", signal.summary)
+        self.assertIn("신호 신뢰도:", signal.summary)
+        self.assertIn("신호 점검: 정상", signal.summary)
 
 
 class DigestTests(TestCase):
@@ -374,6 +379,8 @@ class DigestTests(TestCase):
         self.assertIn("최신TP 150,000원", message)
         self.assertIn("괴리 +50.00%", message)
         self.assertIn("참고 의견", message)
+        self.assertIn("신호 신뢰도", message)
+        self.assertIn("신호 점검", message)
         self.assertIn("최근 리포트 투자의견은 매수입니다.", message)
         self.assertNotIn("전일종가", message)
 
@@ -451,6 +458,89 @@ class OpinionEngineTests(TestCase):
         assessment = assess_signal(signal, current_price=100000)
 
         self.assertEqual(assessment.label, "적극매수")
+
+
+class SignalAnalysisTests(TestCase):
+    def test_flags_suspicious_target_price_against_current_price(self) -> None:
+        security = Security.objects.create(symbol="900001", name="파싱테스트", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="Parsing Broker")
+        ResearchReport.objects.create(
+            source="naver",
+            source_report_id="suspicious-target",
+            security=security,
+            brokerage=brokerage,
+            title="목표가 파싱 테스트",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=900000,
+            previous_target_price=100000,
+        )
+        rule = AlertRule.objects.create(
+            name="suspicious-target",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=1,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        signal = detect_signals(rule, sources=["naver"])[0]
+        analysis = analyze_signal(signal, current_price=100000, previous_close=99000)
+
+        self.assertEqual(analysis.signal_check_label, "검토 필요")
+        self.assertEqual(analysis.reliability_label, "낮음")
+        self.assertIn("전일 대비 +1.01%", analysis.price_reaction_line)
+
+    def test_eps_direction_is_shown_when_previous_eps_exists(self) -> None:
+        security = Security.objects.create(symbol="900002", name="EPS테스트", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="EPS Broker")
+        ResearchReport.objects.create(
+            source="naver",
+            source_report_id="eps-old",
+            security=security,
+            brokerage=brokerage,
+            title="이전 EPS",
+            report_date=timezone.localdate() - timedelta(days=4),
+            published_at=timezone.now(),
+            target_price=100000,
+            previous_target_price=95000,
+            eps_forecast=Decimal("5000"),
+        )
+        ResearchReport.objects.create(
+            source="naver",
+            source_report_id="eps-new",
+            security=security,
+            brokerage=brokerage,
+            title="신규 EPS",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=130000,
+            previous_target_price=100000,
+            eps_forecast=Decimal("6000"),
+        )
+        rule = AlertRule.objects.create(
+            name="eps-trend",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=1,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        signal = detect_signals(rule, sources=["naver"])[0]
+        analysis = analyze_signal(signal, current_price=100000)
+
+        self.assertIn("5,000.00 -> 6,000.00 (+20.00%)", analysis.eps_line)
+
+
+class TelegramMessageTests(TestCase):
+    def test_chunk_message_splits_long_digest_on_sections(self) -> None:
+        message = "\n\n".join(f"section {index} " + ("x" * 200) for index in range(10))
+
+        chunks = chunk_message(message, limit=500)
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(chunk) <= 500 for chunk in chunks))
 
 
 class WatchlistImportCommandTests(TestCase):

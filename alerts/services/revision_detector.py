@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from alerts.models import AlertRule
 from alerts.services.opinion_engine import assess_signal
+from alerts.services.signal_analysis import analyze_signal
 from research.models import ResearchReport, Security, WatchlistEntry
 from research.services.naver_quotes import StockPriceSnapshot
 from research.services.report_flags import (
@@ -48,6 +49,7 @@ def attach_current_prices(
             max_revision_ratio=signal.max_revision_ratio,
             reports=signal.reports,
             current_price=current_price,
+            previous_close=snapshot.previous_close if snapshot is not None else None,
         )
         if current_price is not None:
             signal.raw_payload["current_price"] = current_price
@@ -209,6 +211,7 @@ def _build_summary(
     max_revision_ratio: Decimal | None,
     reports: list[ResearchReport],
     current_price: int | None = None,
+    previous_close: int | None = None,
 ) -> str:
     direction_text = "상향" if direction == AlertRule.DIRECTION_UP else "하향"
     direction_emoji = "📈" if direction == AlertRule.DIRECTION_UP else "📉"
@@ -231,6 +234,11 @@ def _build_summary(
         raw_payload={},
     )
     opinion = assess_signal(signal, current_price=current_price)
+    analysis = analyze_signal(
+        signal,
+        current_price=current_price,
+        previous_close=previous_close,
+    )
 
     report_lines = []
     for report in reports:
@@ -246,6 +254,7 @@ def _build_summary(
     max_text = _format_ratio(max_revision_ratio)
     lines = [
         f"🏢 {security.name} ({security.symbol})",
+        f"알림 유형: {analysis.alert_type_label}",
         f"{direction_emoji} 방향: {direction_text} 리비전",
         f"🏦 증권사 수: {distinct_brokerage_count} | 리포트 수: {revision_count}",
         f"📊 평균 변동률: {avg_text} | 최대 변동률: {max_text}",
@@ -254,8 +263,18 @@ def _build_summary(
         lines.append(f"🧾 요약: {insight}")
     if current_price is not None:
         lines.append(f"💰 현재가: {current_price:,}원")
-    lines.append(f"🧪 EPS(최신): {_format_eps(latest_eps)}")
+    if analysis.target_price is not None and analysis.upside_ratio is not None:
+        lines.append(
+            f"🎯 최신 목표가: {analysis.target_price:,}원 | 괴리: {analysis.upside_ratio:+.2f}%"
+        )
+    lines.append(f"🧪 {analysis.eps_line}")
+    lines.append(f"📊 {analysis.price_reaction_line}")
     lines.append(f"🤖 참고 의견: {opinion.label}")
+    lines.append(f"🔎 신호 신뢰도: {analysis.reliability_label}")
+    lines.append(f"🛡️ 신호 점검: {analysis.signal_check_label}")
     lines.append(f"💬 {opinion.comment}")
+    lines.append(f"💬 {analysis.reliability_comment}")
+    if analysis.signal_check_label != "정상":
+        lines.append(f"💬 {analysis.signal_check_comment}")
     lines.extend(report_lines)
     return "\n".join(lines)

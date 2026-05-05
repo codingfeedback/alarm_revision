@@ -10,6 +10,7 @@ from django.utils import timezone
 from alerts.models import AlertRule
 from alerts.services.opinion_engine import assess_signal
 from alerts.services.revision_detector import RevisionSignal
+from alerts.services.signal_analysis import analyze_signal
 from research.services.naver_quotes import StockPriceSnapshot
 
 US_EASTERN_TZ = ZoneInfo("America/New_York")
@@ -68,8 +69,14 @@ def build_digest_message(
         snapshot = (price_snapshots or {}).get(signal.security.symbol)
         current_price = snapshot.current_price if snapshot is not None else None
         opinion = assess_signal(signal, current_price=current_price)
+        analysis = analyze_signal(
+            signal,
+            current_price=current_price,
+            previous_close=snapshot.previous_close if snapshot is not None else None,
+        )
         lines = [
             f"{'📈' if signal.direction == AlertRule.DIRECTION_UP else '📉'} {signal.security.name} ({signal.security.symbol})",
+            f"알림 유형 {analysis.alert_type_label}",
             f"증권사 {signal.distinct_brokerage_count}곳 | 평균 변동률 {ratio_text}",
         ]
         price_line = _build_price_line(
@@ -78,9 +85,15 @@ def build_digest_message(
         )
         if price_line:
             lines.append(price_line)
-        lines.append(f"EPS {eps_text}")
+        lines.append(analysis.eps_line if analysis.eps_line != "EPS: N/A" else f"EPS {eps_text}")
+        lines.append(analysis.price_reaction_line)
         lines.append(f"🤖 참고 의견 {opinion.label}")
+        lines.append(f"🔎 신호 신뢰도 {analysis.reliability_label}")
+        lines.append(f"🛡️ 신호 점검 {analysis.signal_check_label}")
         lines.append(f"💬 {opinion.comment}")
+        lines.append(f"💬 {analysis.reliability_comment}")
+        if analysis.signal_check_label != "정상":
+            lines.append(f"💬 {analysis.signal_check_comment}")
         insight = _insight_from_report(latest_report.title, latest_report.summary)
         if insight:
             lines.append(f"요약: {insight}")
