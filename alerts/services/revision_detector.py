@@ -12,26 +12,10 @@ from alerts.models import AlertRule
 from alerts.services.opinion_engine import assess_signal
 from research.models import ResearchReport, Security, WatchlistEntry
 from research.services.naver_quotes import StockPriceSnapshot
-
-STOCK_SPLIT_KEYWORDS = (
-    "액면분할",
-    "주식분할",
-    "분할 반영",
-    "분할후",
-    "분할 후",
-    "stock split",
-    "split-adjusted",
-    "split adjusted",
+from research.services.report_flags import (
+    is_stock_split_adjustment,
+    should_skip_revision_report,
 )
-STOCK_SPLIT_RATIOS = (
-    Decimal("0.50"),
-    Decimal("0.20"),
-    Decimal("0.10"),
-    Decimal("0.05"),
-    Decimal("0.02"),
-    Decimal("0.01"),
-)
-STOCK_SPLIT_RATIO_TOLERANCE = Decimal("0.03")
 
 
 @dataclass(slots=True)
@@ -96,7 +80,7 @@ def detect_signals(
 
     grouped: dict[tuple[int, str], list[ResearchReport]] = {}
     for report in reports:
-        if is_stock_split_adjustment(report):
+        if should_skip_revision_report(report):
             continue
         ratio = report.revision_ratio
         if ratio is None or ratio == 0:
@@ -183,44 +167,6 @@ def _direction_from_ratio(ratio: Decimal) -> str | None:
 
 def _rule_matches_direction(rule: AlertRule, direction: str) -> bool:
     return rule.direction == AlertRule.DIRECTION_BOTH or rule.direction == direction
-
-
-def is_stock_split_adjustment(report: ResearchReport) -> bool:
-    if not report.target_price or not report.previous_target_price:
-        return False
-    if report.target_price >= report.previous_target_price:
-        return False
-
-    text = _split_detection_text(report)
-    if any(keyword in text for keyword in STOCK_SPLIT_KEYWORDS):
-        return True
-
-    target_to_previous = (
-        Decimal(report.target_price) / Decimal(report.previous_target_price)
-    ).quantize(Decimal("0.0001"))
-    return any(
-        abs(target_to_previous - split_ratio) <= STOCK_SPLIT_RATIO_TOLERANCE
-        for split_ratio in STOCK_SPLIT_RATIOS
-    )
-
-
-def _split_detection_text(report: ResearchReport) -> str:
-    parts = [
-        report.title,
-        report.summary,
-        _raw_payload_text(report.raw_payload),
-    ]
-    return " ".join(part for part in parts if part).lower()
-
-
-def _raw_payload_text(value) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, dict):
-        return " ".join(_raw_payload_text(item) for item in value.values())
-    if isinstance(value, (list, tuple, set)):
-        return " ".join(_raw_payload_text(item) for item in value)
-    return str(value)
 
 
 def _format_eps(value) -> str:

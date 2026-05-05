@@ -17,7 +17,9 @@ from alerts.services.revision_detector import (
     is_stock_split_adjustment,
 )
 from research.models import Brokerage, ResearchReport, Security, WatchlistEntry
+from research.services.ingestion import ingest_reports
 from research.services.naver_quotes import StockPriceSnapshot
+from research.services.schemas import ParsedReport
 
 
 class RevisionDetectorTests(TestCase):
@@ -153,6 +155,119 @@ class RevisionDetectorTests(TestCase):
         )
 
         self.assertTrue(is_stock_split_adjustment(report))
+
+    def test_ignores_reverse_split_adjusted_target_price_jump(self) -> None:
+        security = Security.objects.create(symbol="345670", name="병합테스트", market="KOSPI")
+        today = timezone.localdate()
+        for index in range(2):
+            brokerage = Brokerage.objects.create(name=f"Reverse Split Broker {index}")
+            ResearchReport.objects.create(
+                source="naver",
+                source_report_id=f"reverse-split-{index}",
+                security=security,
+                brokerage=brokerage,
+                title="액면병합 반영 목표가 조정",
+                summary="주식병합 이후 기준 가격을 반영했다.",
+                report_date=today - timedelta(days=index),
+                published_at=timezone.now(),
+                target_price=500000,
+                previous_target_price=50000,
+            )
+
+        rule = AlertRule.objects.create(
+            name="ignore-reverse-split",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=2,
+            lookback_days=5,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        self.assertEqual(detect_signals(rule, sources=["naver"]), [])
+
+    def test_ignores_capital_action_price_adjustments(self) -> None:
+        security = Security.objects.create(symbol="456780", name="증자테스트", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="Capital Action Broker")
+        ResearchReport.objects.create(
+            source="naver",
+            source_report_id="capital-action",
+            security=security,
+            brokerage=brokerage,
+            title="유상증자 권리락 반영",
+            summary="신주 발행과 권리락을 반영해 목표가 기준을 조정했다.",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=70000,
+            previous_target_price=100000,
+        )
+
+        rule = AlertRule.objects.create(
+            name="ignore-capital-action",
+            direction=AlertRule.DIRECTION_DOWN,
+            min_revision_count=1,
+            lookback_days=5,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        self.assertEqual(detect_signals(rule, sources=["naver"]), [])
+
+    def test_ignores_reorganization_price_adjustments(self) -> None:
+        security = Security.objects.create(symbol="567890", name="분할합병테스트", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="Reorg Broker")
+        ResearchReport.objects.create(
+            source="naver",
+            source_report_id="reorg-action",
+            security=security,
+            brokerage=brokerage,
+            title="인적분할 및 지주회사 전환 반영",
+            summary="기업분할 이후 비교 기준이 달라졌다.",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=60000,
+            previous_target_price=90000,
+        )
+
+        rule = AlertRule.objects.create(
+            name="ignore-reorg-action",
+            direction=AlertRule.DIRECTION_DOWN,
+            min_revision_count=1,
+            lookback_days=5,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        self.assertEqual(detect_signals(rule, sources=["naver"]), [])
+
+    def test_coverage_reset_does_not_link_previous_target_on_ingest(self) -> None:
+        ingest_reports(
+            [
+                ParsedReport(
+                    source="naver",
+                    source_report_id="coverage-old",
+                    symbol="678900",
+                    security_name="커버리지테스트",
+                    brokerage_name="Coverage Broker",
+                    title="기존 리포트",
+                    report_date=date(2026, 4, 1),
+                    target_price=100000,
+                ),
+                ParsedReport(
+                    source="naver",
+                    source_report_id="coverage-reset",
+                    symbol="678900",
+                    security_name="커버리지테스트",
+                    brokerage_name="Coverage Broker",
+                    title="커버리지 재개",
+                    summary="커버리지 재개로 신규 기준 목표가를 제시한다.",
+                    report_date=date(2026, 5, 1),
+                    target_price=130000,
+                ),
+            ]
+        )
+
+        report = ResearchReport.objects.get(source_report_id="coverage-reset")
+        self.assertIsNone(report.previous_target_price)
 
     def test_attach_current_prices_adds_live_price_to_summary(self) -> None:
         security = Security.objects.create(symbol="005930", name="삼성전자", market="KOSPI")

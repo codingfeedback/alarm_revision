@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from django.db import transaction
 
 from research.models import Analyst, Brokerage, ResearchReport, Security
+from research.services.report_flags import should_skip_previous_target_link
 from research.services.schemas import ParsedReport
 
 
@@ -17,6 +18,8 @@ def _resolve_previous_target(
     security: Security,
     brokerage: Brokerage,
 ) -> int | None:
+    if should_skip_previous_target_link(item):
+        return None
     if item.previous_target_price:
         return item.previous_target_price
     if not item.report_date:

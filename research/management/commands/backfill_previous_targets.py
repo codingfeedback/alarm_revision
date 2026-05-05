@@ -1,6 +1,7 @@
 ﻿from django.core.management.base import BaseCommand
 
 from research.models import ResearchReport
+from research.services.report_flags import should_skip_previous_target_link
 
 
 class Command(BaseCommand):
@@ -23,6 +24,9 @@ class Command(BaseCommand):
         for report in queryset:
             key = (report.security_id, report.brokerage_id)
             previous_target = last_target_by_key.get(key)
+            if should_skip_previous_target_link(report):
+                last_target_by_key[key] = report.target_price
+                continue
             should_update = options["overwrite"] or report.previous_target_price is None
             if should_update and previous_target is not None and report.previous_target_price != previous_target:
                 report.previous_target_price = previous_target
