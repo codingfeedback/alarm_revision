@@ -11,6 +11,7 @@ from django.utils import timezone
 from alerts.models import AlertRule
 from alerts.services.digests import build_digest_message, matches_us_dst_mode
 from alerts.services.opinion_engine import assess_signal
+from alerts.services.orchestrator import ensure_observation_rule, run_alert_cycle
 from alerts.services.signal_analysis import analyze_signal
 from alerts.services.telegram import chunk_message
 from alerts.services.revision_detector import (
@@ -585,3 +586,30 @@ class AlertRuleCommandTests(TestCase):
         self.assertEqual(rule.direction, "up")
         self.assertEqual(rule.min_revision_count, 4)
         self.assertTrue(rule.watchlist_only)
+
+    def test_observation_alert_uses_one_large_revision_before_confirmation(self) -> None:
+        security = Security.objects.create(symbol="777770", name="관찰테스트", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="Observation Broker")
+        ResearchReport.objects.create(
+            source="naver",
+            source_report_id="observation-large",
+            security=security,
+            brokerage=brokerage,
+            title="큰 폭 목표가 상향",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=130000,
+            previous_target_price=100000,
+        )
+        observation_rule = ensure_observation_rule()
+
+        result = run_alert_cycle(
+            sources=["naver"],
+            rule_names=[observation_rule.name],
+            max_distinct_brokerage_count=1,
+            message_prefix="선행 관찰 알림",
+        )
+
+        self.assertEqual(result["created_events"], 1)
+        self.assertEqual(security.alert_events.count(), 1)
+        self.assertIn("선행 관찰 알림", security.alert_events.first().summary)

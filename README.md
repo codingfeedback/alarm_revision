@@ -5,11 +5,12 @@
 ## 현재 운영 방식
 
 - 국내 정기 알림: 평일 07:30, 주말 09:00
-- 국내 수시 알림: 매일 08:00부터 1시간 간격
+- 국내 수시 수집: 기존 08:00부터 16시간 동안 1시간 간격 유지 + 평일 07:00~09:00 15분 간격 집중 수집
 - 해외 정기 알림: 미국 DST일 때 10:15, 표준시일 때 11:15
 - 정기 알림: 신호가 없어도 발송
 - 수시 알림: 새 리비전 신호가 생길 때만 발송
 - 기준: 최근 7일, 서로 다른 증권사 2곳 이상 목표가 상향/하향 리비전
+- 선행 관찰 알림: 서로 다른 증권사 2곳 조건 전이라도 1개 증권사에서 15% 이상 큰 폭 리비전이 나오면 1차 알림
 
 ## 핵심 구성
 
@@ -91,7 +92,7 @@ python manage.py test
 ## 작업 스케줄러 스크립트
 
 - `scripts/register_daily_0845_task.ps1`: 국내 정기 알림 등록(평일 07:30 / 주말 09:00)
-- `scripts/register_live_monitor_task.ps1`: 국내 수시 모니터링 등록
+- `scripts/register_live_monitor_task.ps1`: 국내 수시 모니터링 등록(기존 1시간 + 장전 15분 집중)
 - `scripts/register_overseas_digest_tasks.ps1`: 해외 DST/표준시 정기 알림 등록
 - `scripts/enable_wake_for_tasks.ps1`: WakeToRun 및 wake timers 활성화
 

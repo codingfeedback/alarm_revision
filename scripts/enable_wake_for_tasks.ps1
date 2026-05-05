@@ -4,6 +4,7 @@ $tasks = @(
     "AlarmRevisionWeekday0730",
     "AlarmRevisionWeekend0900",
     "AlarmRevisionLiveMonitor",
+    "AlarmRevisionFastPremarket",
     "AlarmRevisionOverseasDigestDST",
     "AlarmRevisionOverseasDigestStandard"
 )
