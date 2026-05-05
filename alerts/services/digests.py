@@ -61,11 +61,6 @@ def build_digest_message(
         latest_report = signal.reports[0]
         ratio = signal.average_revision_ratio or signal.max_revision_ratio
         ratio_text = f"{ratio:+.2f}%" if ratio is not None else "N/A"
-        eps_value = next(
-            (report.eps_forecast for report in signal.reports if report.eps_forecast is not None),
-            None,
-        )
-        eps_text = f"{eps_value:,.2f}" if eps_value is not None else "N/A"
         snapshot = (price_snapshots or {}).get(signal.security.symbol)
         current_price = snapshot.current_price if snapshot is not None else None
         opinion = assess_signal(signal, current_price=current_price)
@@ -85,9 +80,9 @@ def build_digest_message(
         )
         if price_line:
             lines.append(f"- {price_line}")
+        lines.append(f"- {analysis.price_reaction_line}")
         if analysis.eps_line:
             lines.append(f"🧪 {analysis.eps_line}")
-        lines.append(f"- {analysis.price_reaction_line}")
         lines.append(f"🤖 참고 의견 {opinion.label}")
         lines.append(f"🔎 신호 신뢰도 {analysis.reliability_label}")
         lines.append(f"🛡️ 신호 점검 {analysis.signal_check_label}")

@@ -286,6 +286,7 @@ class RevisionDetectorTests(TestCase):
             published_at=timezone.now(),
             target_price=150000,
             previous_target_price=120000,
+            eps_forecast=Decimal("6000"),
         )
 
         rule = AlertRule.objects.create(
@@ -318,6 +319,8 @@ class RevisionDetectorTests(TestCase):
         self.assertIn("- 알림 유형:", signal.summary)
         self.assertIn("- 최근 주가 반응:", signal.summary)
         self.assertNotIn("EPS: N/A", signal.summary)
+        self.assertLess(signal.summary.index("- 최근 주가 반응:"), signal.summary.index("🧪 EPS:"))
+        self.assertLess(signal.summary.index("🧪 EPS:"), signal.summary.index("🤖 참고 의견:"))
 
 
 class DigestTests(TestCase):
@@ -355,6 +358,7 @@ class DigestTests(TestCase):
             published_at=timezone.now(),
             target_price=150000,
             previous_target_price=120000,
+            eps_forecast=Decimal("6000"),
         )
         rule = AlertRule.objects.create(
             name="digest-price",
@@ -390,6 +394,8 @@ class DigestTests(TestCase):
         self.assertIn("최근 리포트 투자의견은 매수입니다.", message)
         self.assertNotIn("EPS N/A", message)
         self.assertNotIn("전일종가", message)
+        self.assertLess(message.index("- 최근 주가 반응"), message.index("🧪 EPS:"))
+        self.assertLess(message.index("🧪 EPS:"), message.index("🤖 참고 의견"))
 
     def test_matches_us_dst_mode(self) -> None:
         summer = datetime(2026, 7, 1, 10, 15, tzinfo=ZoneInfo("Asia/Seoul"))

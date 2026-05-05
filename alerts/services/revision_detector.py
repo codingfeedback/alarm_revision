@@ -216,10 +216,6 @@ def _build_summary(
     direction_text = "상향" if direction == AlertRule.DIRECTION_UP else "하향"
     direction_emoji = "📈" if direction == AlertRule.DIRECTION_UP else "📉"
     latest_report = reports[0]
-    latest_eps = next(
-        (report.eps_forecast for report in reports if report.eps_forecast is not None),
-        None,
-    )
     insight = _build_insight(latest_report)
     signal = RevisionSignal(
         security=security,
@@ -270,9 +266,9 @@ def _build_summary(
         lines.append(
             f"🎯 최신 목표가: {analysis.target_price:,}원 | 괴리: {analysis.upside_ratio:+.2f}%"
         )
+    lines.append(f"- {analysis.price_reaction_line}")
     if analysis.eps_line:
         lines.append(f"🧪 {analysis.eps_line}")
-    lines.append(f"- {analysis.price_reaction_line}")
     lines.append(f"🤖 참고 의견: {opinion.label}")
     lines.append(f"🔎 신호 신뢰도: {analysis.reliability_label}")
     lines.append(f"🛡️ 신호 점검: {analysis.signal_check_label}")
