@@ -315,6 +315,9 @@ class RevisionDetectorTests(TestCase):
         self.assertIn("최신 목표가: 150,000원", signal.summary)
         self.assertIn("신호 신뢰도:", signal.summary)
         self.assertIn("신호 점검: 정상", signal.summary)
+        self.assertIn("- 알림 유형:", signal.summary)
+        self.assertIn("- 최근 주가 반응:", signal.summary)
+        self.assertNotIn("EPS: N/A", signal.summary)
 
 
 class DigestTests(TestCase):
@@ -381,7 +384,11 @@ class DigestTests(TestCase):
         self.assertIn("참고 의견", message)
         self.assertIn("신호 신뢰도", message)
         self.assertIn("신호 점검", message)
+        self.assertIn("🧾 요약:", message)
+        self.assertIn("- 알림 유형", message)
+        self.assertIn("- 최근 주가 반응", message)
         self.assertIn("최근 리포트 투자의견은 매수입니다.", message)
+        self.assertNotIn("EPS N/A", message)
         self.assertNotIn("전일종가", message)
 
     def test_matches_us_dst_mode(self) -> None:

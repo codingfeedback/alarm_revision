@@ -118,7 +118,7 @@ def _build_signal_check(
 def _build_eps_line(latest_report: ResearchReport) -> tuple[str, str]:
     current_eps = latest_report.eps_forecast
     if current_eps is None:
-        return "EPS: N/A", "unknown"
+        return "", "unknown"
 
     previous_report = (
         ResearchReport.objects.filter(
@@ -190,7 +190,7 @@ def _build_reliability(
     if score >= 5:
         return "높음", "여러 증권사의 같은 방향 조정과 실적/괴리 조건이 함께 확인됐습니다."
     if score >= 2:
-        return "보통", "리비전 방향은 확인되지만 EPS 또는 가격 반영 여부는 추가 확인이 좋습니다."
+        return "보통", "리비전 방향은 확인되지만 가격 반영 여부는 추가 확인이 좋습니다."
     return "낮음", "조건 일부만 확인되어 원문과 후속 리포트를 함께 보는 편이 좋습니다."
 
 

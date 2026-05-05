@@ -76,17 +76,18 @@ def build_digest_message(
         )
         lines = [
             f"{'📈' if signal.direction == AlertRule.DIRECTION_UP else '📉'} {signal.security.name} ({signal.security.symbol})",
-            f"알림 유형 {analysis.alert_type_label}",
-            f"증권사 {signal.distinct_brokerage_count}곳 | 평균 변동률 {ratio_text}",
+            f"- 알림 유형 {analysis.alert_type_label}",
+            f"- 증권사 {signal.distinct_brokerage_count}곳 | 평균 변동률 {ratio_text}",
         ]
         price_line = _build_price_line(
             snapshot=snapshot,
             target_price=latest_report.target_price,
         )
         if price_line:
-            lines.append(price_line)
-        lines.append(analysis.eps_line if analysis.eps_line != "EPS: N/A" else f"EPS {eps_text}")
-        lines.append(analysis.price_reaction_line)
+            lines.append(f"- {price_line}")
+        if analysis.eps_line:
+            lines.append(f"🧪 {analysis.eps_line}")
+        lines.append(f"- {analysis.price_reaction_line}")
         lines.append(f"🤖 참고 의견 {opinion.label}")
         lines.append(f"🔎 신호 신뢰도 {analysis.reliability_label}")
         lines.append(f"🛡️ 신호 점검 {analysis.signal_check_label}")
@@ -96,7 +97,7 @@ def build_digest_message(
             lines.append(f"💬 {analysis.signal_check_comment}")
         insight = _insight_from_report(latest_report.title, latest_report.summary)
         if insight:
-            lines.append(f"요약: {insight}")
+            lines.append(f"🧾 요약: {insight}")
         sections.append("\n".join(lines))
     return "\n\n".join(sections)
 

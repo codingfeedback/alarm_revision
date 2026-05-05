@@ -242,11 +242,14 @@ def _build_summary(
 
     report_lines = []
     for report in reports:
+        ratio_line = f"변동률 {_format_ratio(report.revision_ratio)}"
+        if report.eps_forecast is not None:
+            ratio_line = f"{ratio_line} | EPS {_format_eps(report.eps_forecast)}"
         report_lines.append(
             (
                 f"📝 {report.report_date:%Y-%m-%d} | {report.brokerage.name}\n"
                 f"목표가 {report.previous_target_price:,} -> {report.target_price:,}원\n"
-                f"변동률 {_format_ratio(report.revision_ratio)} | EPS {_format_eps(report.eps_forecast)}"
+                f"{ratio_line}"
             )
         )
 
@@ -254,7 +257,7 @@ def _build_summary(
     max_text = _format_ratio(max_revision_ratio)
     lines = [
         f"🏢 {security.name} ({security.symbol})",
-        f"알림 유형: {analysis.alert_type_label}",
+        f"- 알림 유형: {analysis.alert_type_label}",
         f"{direction_emoji} 방향: {direction_text} 리비전",
         f"🏦 증권사 수: {distinct_brokerage_count} | 리포트 수: {revision_count}",
         f"📊 평균 변동률: {avg_text} | 최대 변동률: {max_text}",
@@ -267,8 +270,9 @@ def _build_summary(
         lines.append(
             f"🎯 최신 목표가: {analysis.target_price:,}원 | 괴리: {analysis.upside_ratio:+.2f}%"
         )
-    lines.append(f"🧪 {analysis.eps_line}")
-    lines.append(f"📊 {analysis.price_reaction_line}")
+    if analysis.eps_line:
+        lines.append(f"🧪 {analysis.eps_line}")
+    lines.append(f"- {analysis.price_reaction_line}")
     lines.append(f"🤖 참고 의견: {opinion.label}")
     lines.append(f"🔎 신호 신뢰도: {analysis.reliability_label}")
     lines.append(f"🛡️ 신호 점검: {analysis.signal_check_label}")
