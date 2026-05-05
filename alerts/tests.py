@@ -11,7 +11,11 @@ from django.utils import timezone
 from alerts.models import AlertRule
 from alerts.services.digests import build_digest_message, matches_us_dst_mode
 from alerts.services.opinion_engine import assess_signal
-from alerts.services.revision_detector import attach_current_prices, detect_signals
+from alerts.services.revision_detector import (
+    attach_current_prices,
+    detect_signals,
+    is_stock_split_adjustment,
+)
 from research.models import Brokerage, ResearchReport, Security, WatchlistEntry
 from research.services.naver_quotes import StockPriceSnapshot
 
@@ -102,6 +106,53 @@ class RevisionDetectorTests(TestCase):
         )
 
         self.assertEqual(detect_signals(rule, sources=["naver"]), [])
+
+    def test_ignores_stock_split_adjusted_target_price_drop(self) -> None:
+        security = Security.objects.create(symbol="123450", name="분할테스트", market="KOSPI")
+        today = timezone.localdate()
+        for index in range(2):
+            brokerage = Brokerage.objects.create(name=f"Split Broker {index}")
+            report = ResearchReport.objects.create(
+                source="naver",
+                source_report_id=f"split-{index}",
+                security=security,
+                brokerage=brokerage,
+                title="액면분할 반영 목표가 조정",
+                summary="액면분할 이후 기준 가격을 반영했다.",
+                report_date=today - timedelta(days=index),
+                published_at=timezone.now(),
+                target_price=50000,
+                previous_target_price=500000,
+            )
+            self.assertTrue(is_stock_split_adjustment(report))
+
+        rule = AlertRule.objects.create(
+            name="ignore-split",
+            direction=AlertRule.DIRECTION_DOWN,
+            min_revision_count=2,
+            lookback_days=5,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        self.assertEqual(detect_signals(rule, sources=["naver"]), [])
+
+    def test_ignores_common_split_ratio_even_without_keyword(self) -> None:
+        security = Security.objects.create(symbol="234560", name="비율테스트", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="Ratio Split Broker")
+        report = ResearchReport.objects.create(
+            source="naver",
+            source_report_id="split-ratio",
+            security=security,
+            brokerage=brokerage,
+            title="목표가 조정",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=102000,
+            previous_target_price=1000000,
+        )
+
+        self.assertTrue(is_stock_split_adjustment(report))
 
     def test_attach_current_prices_adds_live_price_to_summary(self) -> None:
         security = Security.objects.create(symbol="005930", name="삼성전자", market="KOSPI")
