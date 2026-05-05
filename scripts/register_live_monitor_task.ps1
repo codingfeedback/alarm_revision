@@ -8,7 +8,7 @@ $hourlyTaskName = "AlarmRevisionLiveMonitor"
 $premarketTaskName = "AlarmRevisionFastPremarket"
 $powershellExe = "C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe"
 $scriptPath = Join-Path $PSScriptRoot "run_live_monitor.ps1"
-$action = "`"$powershellExe`" -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+$action = "`"$powershellExe`" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`""
 
 foreach ($legacyTaskName in $legacyTaskNames) {
     cmd /c "schtasks /Delete /TN $legacyTaskName /F >nul 2>&1"
