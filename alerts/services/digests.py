@@ -84,8 +84,9 @@ def build_digest_message(
         if analysis.eps_line:
             lines.append(f"🧪 {analysis.eps_line}")
         lines.append(f"🤖 참고 의견 {opinion.label}")
-        lines.append(f"🔎 신호 신뢰도 {analysis.reliability_label}")
-        lines.append(f"🛡️ 신호 점검 {analysis.signal_check_label}")
+        lines.append(
+            f"🔎 신호 확인 신뢰도 {analysis.reliability_label} | 점검 {analysis.signal_check_label}"
+        )
         lines.append(f"💬 {opinion.comment}")
         if analysis.reliability_comment:
             lines.append(f"💬 {analysis.reliability_comment}")
