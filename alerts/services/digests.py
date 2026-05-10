@@ -87,7 +87,8 @@ def build_digest_message(
         lines.append(f"🔎 신호 신뢰도 {analysis.reliability_label}")
         lines.append(f"🛡️ 신호 점검 {analysis.signal_check_label}")
         lines.append(f"💬 {opinion.comment}")
-        lines.append(f"💬 {analysis.reliability_comment}")
+        if analysis.reliability_comment:
+            lines.append(f"💬 {analysis.reliability_comment}")
         if analysis.signal_check_label != "정상":
             lines.append(f"💬 {analysis.signal_check_comment}")
         insight = _insight_from_report(latest_report.title, latest_report.summary)
