@@ -315,14 +315,51 @@ class RevisionDetectorTests(TestCase):
         self.assertIn("참고 의견:", signal.summary)
         self.assertIn("매수", signal.summary)
         self.assertIn("최신 목표가: 150,000원", signal.summary)
-        self.assertIn("신호 확인: 신뢰도", signal.summary)
-        self.assertIn("점검 정상", signal.summary)
+        self.assertNotIn("신호 확인", signal.summary)
+        self.assertNotIn("점검 정상", signal.summary)
         self.assertIn("- 알림 유형:", signal.summary)
         self.assertIn("- 최근 주가 반응:", signal.summary)
         self.assertNotIn("💬", signal.summary)
         self.assertNotIn("EPS: N/A", signal.summary)
         self.assertLess(signal.summary.index("- 최근 주가 반응:"), signal.summary.index("🧪 EPS:"))
         self.assertLess(signal.summary.index("🧪 EPS:"), signal.summary.index("🤖 참고 의견:"))
+
+    def test_signal_check_only_shows_when_review_needed(self) -> None:
+        security = Security.objects.create(symbol="900001", name="파싱테스트", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="Parsing Broker")
+        ResearchReport.objects.create(
+            source="naver",
+            source_report_id="live-suspicious-target",
+            security=security,
+            brokerage=brokerage,
+            title="목표가 파싱 테스트",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=900000,
+            previous_target_price=100000,
+        )
+        rule = AlertRule.objects.create(
+            name="live-suspicious-target",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=1,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        signal = detect_signals(rule, sources=["naver"])[0]
+        attach_current_prices(
+            [signal],
+            {
+                "900001": StockPriceSnapshot(
+                    symbol="900001",
+                    current_price=100000,
+                    previous_close=99000,
+                )
+            },
+        )
+
+        self.assertIn("⚠️ 신호 확인: 신뢰도 낮음 | 점검 검토 필요", signal.summary)
 
 
 class DigestTests(TestCase):
@@ -388,8 +425,8 @@ class DigestTests(TestCase):
         self.assertIn("최신TP 150,000원", message)
         self.assertIn("괴리 +50.00%", message)
         self.assertIn("참고 의견", message)
-        self.assertIn("신호 확인 신뢰도", message)
-        self.assertIn("점검 정상", message)
+        self.assertNotIn("신호 확인", message)
+        self.assertNotIn("점검 정상", message)
         self.assertIn("🧾 요약:", message)
         self.assertIn("- 알림 유형", message)
         self.assertIn("- 최근 주가 반응", message)
@@ -399,6 +436,46 @@ class DigestTests(TestCase):
         self.assertNotIn("전일종가", message)
         self.assertLess(message.index("- 최근 주가 반응"), message.index("🧪 EPS:"))
         self.assertLess(message.index("🧪 EPS:"), message.index("🤖 참고 의견"))
+
+    def test_digest_signal_check_only_shows_when_review_needed(self) -> None:
+        security = Security.objects.create(symbol="900002", name="정기파싱", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="Digest Parsing Broker")
+        ResearchReport.objects.create(
+            source="naver",
+            source_report_id="digest-suspicious-target",
+            security=security,
+            brokerage=brokerage,
+            title="목표가 파싱 테스트",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=900000,
+            previous_target_price=100000,
+        )
+        rule = AlertRule.objects.create(
+            name="digest-suspicious-target",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=1,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+        signal = detect_signals(rule, sources=["naver"])[0]
+
+        message = build_digest_message(
+            region_label="국내",
+            region_emoji="🇰🇷",
+            rule=rule,
+            signals=[signal],
+            price_snapshots={
+                "900002": StockPriceSnapshot(
+                    symbol="900002",
+                    current_price=100000,
+                    previous_close=99000,
+                )
+            },
+        )
+
+        self.assertIn("⚠️ 신호 확인 신뢰도 낮음 | 점검 검토 필요", message)
 
     def test_matches_us_dst_mode(self) -> None:
         summer = datetime(2026, 7, 1, 10, 15, tzinfo=ZoneInfo("Asia/Seoul"))

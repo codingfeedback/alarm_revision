@@ -270,8 +270,9 @@ def _build_summary(
     if analysis.eps_line:
         lines.append(f"🧪 {analysis.eps_line}")
     lines.append(f"🤖 참고 의견: {opinion.label}")
-    lines.append(
-        f"🔎 신호 확인: 신뢰도 {analysis.reliability_label} | 점검 {analysis.signal_check_label}"
-    )
+    if analysis.signal_check_label != "정상":
+        lines.append(
+            f"⚠️ 신호 확인: 신뢰도 {analysis.reliability_label} | 점검 {analysis.signal_check_label}"
+        )
     lines.extend(report_lines)
     return "\n".join(lines)
