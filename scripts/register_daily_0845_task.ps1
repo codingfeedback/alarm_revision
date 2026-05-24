@@ -10,9 +10,10 @@ $legacyTaskNames = @(
 )
 $weekdayTaskName = "AlarmRevisionWeekday0730"
 $weekendTaskName = "AlarmRevisionWeekend0900"
-$powershellExe = "C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe"
+$wscriptExe = "C:\WINDOWS\System32\wscript.exe"
+$hiddenRunner = Join-Path $PSScriptRoot "run_hidden.vbs"
 $scriptPath = Join-Path $PSScriptRoot "run_desktop_cycle.ps1"
-$action = '"' + $powershellExe + '" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $scriptPath + '"'
+$action = '"' + $wscriptExe + '" "' + $hiddenRunner + '" "' + $scriptPath + '"'
 
 foreach ($legacyTaskName in $legacyTaskNames) {
     cmd /c "schtasks /Delete /TN $legacyTaskName /F >nul 2>&1"

@@ -98,6 +98,7 @@ python manage.py test
 - `scripts/register_daily_0845_task.ps1`: 국내 정기 알림 등록(평일 07:30 / 주말 09:00)
 - `scripts/register_live_monitor_task.ps1`: 국내 수시 모니터링 등록(기존 1시간 + 장전 15분 집중)
 - `scripts/register_overseas_digest_tasks.ps1`: 해외 DST/표준시 정기 알림 등록
+- `scripts/run_hidden.vbs`: 작업 스케줄러 실행 시 PowerShell 콘솔 창 없이 백그라운드 실행
 - `scripts/enable_wake_for_tasks.ps1`: WakeToRun 및 wake timers 활성화
 
 ## 절전 관련
