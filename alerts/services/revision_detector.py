@@ -9,6 +9,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from alerts.models import AlertRule
+from alerts.services.message_format import build_report_link_lines, build_signal_check_line
 from alerts.services.opinion_engine import assess_signal
 from alerts.services.signal_analysis import analyze_signal
 from research.models import ResearchReport, Security, WatchlistEntry
@@ -270,9 +271,13 @@ def _build_summary(
     if analysis.eps_line:
         lines.append(f"🧪 {analysis.eps_line}")
     lines.append(f"🤖 참고 의견: {opinion.label}")
-    if analysis.signal_check_label != "정상":
-        lines.append(
-            f"⚠️ 신호 확인: 신뢰도 {analysis.reliability_label} | 점검 {analysis.signal_check_label}"
-        )
+    signal_check_line = build_signal_check_line(
+        reliability_label=analysis.reliability_label,
+        signal_check_label=analysis.signal_check_label,
+        with_colon=True,
+    )
+    if signal_check_line:
+        lines.append(signal_check_line)
+    lines.extend(build_report_link_lines(reports=reports, opinion_label=opinion.label))
     lines.extend(report_lines)
     return "\n".join(lines)

@@ -69,8 +69,12 @@ class Command(BaseCommand):
                 "domestic_reports_updated": updated,
                 "domestic_alert_events_created": alert_result["created_events"],
                 "domestic_alert_events_sent": alert_result["sent_events"],
+                "domestic_alert_events_suppressed": alert_result["suppressed_events"],
                 "domestic_observation_events_created": observation_result["created_events"],
                 "domestic_observation_events_sent": observation_result["sent_events"],
+                "domestic_observation_events_suppressed": observation_result[
+                    "suppressed_events"
+                ],
             }
         )
 
@@ -90,6 +94,9 @@ class Command(BaseCommand):
                         "overseas_reports_updated": updated,
                         "overseas_alert_events_created": alert_result["created_events"],
                         "overseas_alert_events_sent": alert_result["sent_events"],
+                        "overseas_alert_events_suppressed": alert_result[
+                            "suppressed_events"
+                        ],
                     }
                 )
 

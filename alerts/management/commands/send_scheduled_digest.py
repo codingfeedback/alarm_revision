@@ -38,6 +38,7 @@ class Command(BaseCommand):
             "reports_updated": 0,
             "alert_events_created": 0,
             "alert_events_sent": 0,
+            "alert_events_suppressed": 0,
             "digest_sent": False,
             "signal_count": 0,
             "skipped": False,
@@ -64,6 +65,7 @@ class Command(BaseCommand):
                 )
                 summary["alert_events_created"] = alert_result["created_events"]
                 summary["alert_events_sent"] = alert_result["sent_events"]
+                summary["alert_events_suppressed"] = alert_result["suppressed_events"]
 
             signals = detect_signals(rule, sources=["naver"])
             summary["signal_count"] = len(signals)
@@ -78,7 +80,8 @@ class Command(BaseCommand):
                 signals=signals,
                 note=(
                     f"수집 {len(reports)}건 | 신규 {created}건 | 갱신 {updated}건 | "
-                    f"즉시알림 {summary['alert_events_sent']}건"
+                    f"즉시알림 {summary['alert_events_sent']}건 | "
+                    f"중복억제 {summary['alert_events_suppressed']}건"
                 ),
                 price_snapshots=price_snapshots,
             )
@@ -117,6 +120,7 @@ class Command(BaseCommand):
                     )
                     summary["alert_events_created"] = alert_result["created_events"]
                     summary["alert_events_sent"] = alert_result["sent_events"]
+                    summary["alert_events_suppressed"] = alert_result["suppressed_events"]
 
                 signals = detect_signals(rule, sources=["fmp"])
                 summary["signal_count"] = len(signals)
@@ -127,7 +131,8 @@ class Command(BaseCommand):
                     signals=signals,
                     note=(
                         f"수집 {len(reports)}건 | 신규 {created}건 | 갱신 {updated}건 | "
-                        f"즉시알림 {summary['alert_events_sent']}건"
+                        f"즉시알림 {summary['alert_events_sent']}건 | "
+                        f"중복억제 {summary['alert_events_suppressed']}건"
                     ),
                 )
 

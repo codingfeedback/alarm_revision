@@ -5,10 +5,10 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from alerts.models import AlertRule
+from alerts.models import AlertEvent, AlertRule
 from alerts.services.digests import build_digest_message, matches_us_dst_mode
 from alerts.services.opinion_engine import assess_signal
 from alerts.services.orchestrator import ensure_observation_rule, run_alert_cycle
@@ -361,6 +361,51 @@ class RevisionDetectorTests(TestCase):
 
         self.assertIn("⚠️ 신호 확인: 신뢰도 낮음 | 점검 검토 필요", signal.summary)
 
+    def test_strong_buy_summary_includes_report_links(self) -> None:
+        security = Security.objects.create(symbol="000660", name="SK하이닉스", market="KOSPI")
+        today = timezone.localdate()
+        for index in range(3):
+            brokerage = Brokerage.objects.create(name=f"Strong Link Broker {index}")
+            ResearchReport.objects.create(
+                source="naver",
+                source_report_id=f"strong-link-{index}",
+                security=security,
+                brokerage=brokerage,
+                title=f"HBM strong link {index}",
+                summary="고대역폭 메모리 수요 확대가 실적 추정을 밀어올리고 있다.",
+                opinion="매수",
+                report_date=today - timedelta(days=index),
+                published_at=timezone.now(),
+                target_price=180000,
+                previous_target_price=130000,
+                report_url=f"https://example.com/reports/{index}",
+            )
+        rule = AlertRule.objects.create(
+            name="strong-link",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=2,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+            distinct_brokerage_only=True,
+        )
+
+        signal = detect_signals(rule, sources=["naver"])[0]
+        attach_current_prices(
+            [signal],
+            {
+                "000660": StockPriceSnapshot(
+                    symbol="000660",
+                    current_price=100000,
+                    previous_close=99000,
+                )
+            },
+        )
+
+        self.assertIn("🤖 참고 의견: 적극매수", signal.summary)
+        self.assertIn("🔗 원문: Strong Link Broker", signal.summary)
+        self.assertIn("https://example.com/reports/", signal.summary)
+
 
 class DigestTests(TestCase):
     def test_build_digest_message_shows_none_when_no_signal(self) -> None:
@@ -476,6 +521,54 @@ class DigestTests(TestCase):
         )
 
         self.assertIn("⚠️ 신호 확인 신뢰도 낮음 | 점검 검토 필요", message)
+
+    def test_digest_strong_buy_includes_report_links(self) -> None:
+        security = Security.objects.create(symbol="000660", name="SK하이닉스", market="KOSPI")
+        today = timezone.localdate()
+        for index in range(3):
+            brokerage = Brokerage.objects.create(name=f"Digest Strong Broker {index}")
+            ResearchReport.objects.create(
+                source="naver",
+                source_report_id=f"digest-strong-link-{index}",
+                security=security,
+                brokerage=brokerage,
+                title=f"HBM digest strong {index}",
+                summary="고대역폭 메모리 수요 확대가 실적 추정을 밀어올리고 있다.",
+                opinion="매수",
+                report_date=today - timedelta(days=index),
+                published_at=timezone.now(),
+                target_price=180000,
+                previous_target_price=130000,
+                report_url=f"https://example.com/digest-reports/{index}",
+            )
+        rule = AlertRule.objects.create(
+            name="digest-strong-link",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=2,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+            distinct_brokerage_only=True,
+        )
+        signal = detect_signals(rule, sources=["naver"])[0]
+
+        message = build_digest_message(
+            region_label="국내",
+            region_emoji="🇰🇷",
+            rule=rule,
+            signals=[signal],
+            price_snapshots={
+                "000660": StockPriceSnapshot(
+                    symbol="000660",
+                    current_price=100000,
+                    previous_close=99000,
+                )
+            },
+        )
+
+        self.assertIn("🤖 참고 의견 적극매수", message)
+        self.assertIn("🔗 원문: Digest Strong Broker", message)
+        self.assertIn("https://example.com/digest-reports/", message)
 
     def test_matches_us_dst_mode(self) -> None:
         summer = datetime(2026, 7, 1, 10, 15, tzinfo=ZoneInfo("Asia/Seoul"))
@@ -692,3 +785,102 @@ class AlertRuleCommandTests(TestCase):
         self.assertEqual(result["created_events"], 1)
         self.assertEqual(security.alert_events.count(), 1)
         self.assertIn("선행 관찰 알림", security.alert_events.first().summary)
+
+    @override_settings(
+        ALERT_COOLDOWN_HOURS=6,
+        ALERT_COOLDOWN_MIN_MAX_REVISION_RATIO_INCREASE=5.0,
+        ENABLE_TELEGRAM_ALERTS=False,
+    )
+    def test_alert_cycle_suppresses_repeated_signal_inside_cooldown(self) -> None:
+        security = Security.objects.create(symbol="123450", name="쿨다운테스트", market="KOSPI")
+        brokerage = Brokerage.objects.create(name="Cooldown Broker")
+        ResearchReport.objects.create(
+            source="manual",
+            source_report_id="cooldown-first",
+            security=security,
+            brokerage=brokerage,
+            title="첫 리비전",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=120000,
+            previous_target_price=100000,
+        )
+        rule = AlertRule.objects.create(
+            name="cooldown-rule",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=1,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        first_result = run_alert_cycle(sources=["manual"], rule_names=[rule.name])
+        self.assertEqual(first_result["created_events"], 1)
+
+        ResearchReport.objects.create(
+            source="manual",
+            source_report_id="cooldown-second",
+            security=security,
+            brokerage=brokerage,
+            title="반복 리비전",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=122000,
+            previous_target_price=100000,
+        )
+
+        second_result = run_alert_cycle(sources=["manual"], rule_names=[rule.name])
+
+        self.assertEqual(second_result["created_events"], 0)
+        self.assertEqual(second_result["suppressed_events"], 1)
+        self.assertEqual(AlertEvent.objects.filter(rule=rule).count(), 1)
+
+    @override_settings(
+        ALERT_COOLDOWN_HOURS=6,
+        ALERT_COOLDOWN_MIN_MAX_REVISION_RATIO_INCREASE=5.0,
+        ENABLE_TELEGRAM_ALERTS=False,
+    )
+    def test_alert_cycle_allows_signal_when_brokerage_count_increases(self) -> None:
+        security = Security.objects.create(symbol="123451", name="강화테스트", market="KOSPI")
+        first_brokerage = Brokerage.objects.create(name="First Broker")
+        second_brokerage = Brokerage.objects.create(name="Second Broker")
+        ResearchReport.objects.create(
+            source="manual",
+            source_report_id="strength-first",
+            security=security,
+            brokerage=first_brokerage,
+            title="첫 리비전",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=120000,
+            previous_target_price=100000,
+        )
+        rule = AlertRule.objects.create(
+            name="strength-rule",
+            direction=AlertRule.DIRECTION_UP,
+            min_revision_count=1,
+            lookback_days=7,
+            min_revision_ratio=Decimal("0.00"),
+            immediate_revision_ratio=Decimal("9999.00"),
+        )
+
+        first_result = run_alert_cycle(sources=["manual"], rule_names=[rule.name])
+        self.assertEqual(first_result["created_events"], 1)
+
+        ResearchReport.objects.create(
+            source="manual",
+            source_report_id="strength-second",
+            security=security,
+            brokerage=second_brokerage,
+            title="증권사 추가 리비전",
+            report_date=timezone.localdate(),
+            published_at=timezone.now(),
+            target_price=121000,
+            previous_target_price=100000,
+        )
+
+        second_result = run_alert_cycle(sources=["manual"], rule_names=[rule.name])
+
+        self.assertEqual(second_result["created_events"], 1)
+        self.assertEqual(second_result["suppressed_events"], 0)
+        self.assertEqual(AlertEvent.objects.filter(rule=rule).count(), 2)

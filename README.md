@@ -11,6 +11,8 @@
 - 수시 알림: 새 리비전 신호가 생길 때만 발송
 - 기준: 최근 7일, 서로 다른 증권사 2곳 이상 목표가 상향/하향 리비전
 - 선행 관찰 알림: 서로 다른 증권사 2곳 조건 전이라도 1개 증권사에서 15% 이상 큰 폭 리비전이 나오면 1차 알림
+- 중복 억제: 같은 종목/방향은 6시간 안에 증권사 수 증가 또는 최대 리비전 폭 5%p 이상 증가가 있을 때만 재알림
+- 원문 링크: AI 참고 의견이 `적극매수`일 때만 리포트 원문 링크 표시
 
 ## 핵심 구성
 
@@ -36,6 +38,8 @@ DEFAULT_LOOKBACK_DAYS=7
 DEFAULT_MIN_REVISION_RATIO=0
 DEFAULT_IMMEDIATE_REVISION_RATIO=9999
 DEFAULT_WATCHLIST_ONLY=False
+ALERT_COOLDOWN_HOURS=6
+ALERT_COOLDOWN_MIN_MAX_REVISION_RATIO_INCREASE=5.0
 
 OVERSEAS_FMP_API_KEY=
 OVERSEAS_TICKERS=AAPL,MSFT,NVDA,AMZN,TSLA

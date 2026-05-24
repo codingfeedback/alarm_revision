@@ -8,6 +8,10 @@ from zoneinfo import ZoneInfo
 from django.utils import timezone
 
 from alerts.models import AlertRule
+from alerts.services.message_format import (
+    build_report_link_lines,
+    build_signal_check_line,
+)
 from alerts.services.opinion_engine import assess_signal
 from alerts.services.revision_detector import RevisionSignal
 from alerts.services.signal_analysis import analyze_signal
@@ -84,10 +88,16 @@ def build_digest_message(
         if analysis.eps_line:
             lines.append(f"🧪 {analysis.eps_line}")
         lines.append(f"🤖 참고 의견 {opinion.label}")
-        if analysis.signal_check_label != "정상":
-            lines.append(
-                f"⚠️ 신호 확인 신뢰도 {analysis.reliability_label} | 점검 {analysis.signal_check_label}"
-            )
+        signal_check_line = build_signal_check_line(
+            reliability_label=analysis.reliability_label,
+            signal_check_label=analysis.signal_check_label,
+            with_colon=False,
+        )
+        if signal_check_line:
+            lines.append(signal_check_line)
+        lines.extend(
+            build_report_link_lines(reports=signal.reports, opinion_label=opinion.label)
+        )
         insight = _insight_from_report(latest_report.title, latest_report.summary)
         if insight:
             lines.append(f"🧾 요약: {insight}")

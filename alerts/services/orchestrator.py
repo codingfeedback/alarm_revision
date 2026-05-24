@@ -1,7 +1,9 @@
 ﻿from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import IntegrityError
 from django.utils import timezone
 
@@ -60,6 +62,7 @@ def run_alert_cycle(
 
     created_events = 0
     sent_events = 0
+    suppressed_events = 0
     notifier = TelegramNotifier()
     quote_collector = NaverQuoteCollector()
     rules = AlertRule.objects.filter(is_active=True)
@@ -82,6 +85,9 @@ def run_alert_cycle(
             )
             signals = attach_current_prices(signals, snapshots)
         for signal in signals:
+            if _is_suppressed_by_cooldown(rule, signal):
+                suppressed_events += 1
+                continue
             message = f"{message_prefix}\n\n{signal.summary}" if message_prefix else signal.summary
             try:
                 event = AlertEvent.objects.create(
@@ -110,4 +116,37 @@ def run_alert_cycle(
                     event.delivery_error = str(exc)
                     event.save(update_fields=["delivery_error"])
 
-    return {"created_events": created_events, "sent_events": sent_events}
+    return {
+        "created_events": created_events,
+        "sent_events": sent_events,
+        "suppressed_events": suppressed_events,
+    }
+
+
+def _is_suppressed_by_cooldown(rule: AlertRule, signal) -> bool:
+    cooldown_hours = settings.ALERT_COOLDOWN_HOURS
+    if cooldown_hours <= 0:
+        return False
+
+    latest_event = (
+        AlertEvent.objects.filter(
+            rule=rule,
+            security=signal.security,
+            direction=signal.direction,
+            triggered_at__gte=timezone.now() - timedelta(hours=cooldown_hours),
+        )
+        .order_by("-triggered_at")
+        .first()
+    )
+    if latest_event is None:
+        return False
+
+    if signal.distinct_brokerage_count > latest_event.distinct_brokerage_count:
+        return False
+
+    previous_max_ratio = latest_event.max_revision_ratio or Decimal("0")
+    current_max_ratio = signal.max_revision_ratio or Decimal("0")
+    min_ratio_increase = Decimal(
+        str(settings.ALERT_COOLDOWN_MIN_MAX_REVISION_RATIO_INCREASE)
+    )
+    return current_max_ratio - previous_max_ratio < min_ratio_increase
